@@ -56,9 +56,6 @@ final class AppViewModel: ObservableObject {
                 selectedPaperID = papers.first?.id
             }
             await refreshNotesForSelectedPaper()
-            Task { [weak self] in
-                await self?.prefetchPaperKnowledgeForSelectedPaper()
-            }
         } catch {
             chatState = .failure(error.localizedDescription)
         }
@@ -118,9 +115,6 @@ final class AppViewModel: ObservableObject {
         translationState = .idle
         paperContextState = .idle
         await refreshNotesForSelectedPaper()
-        Task { [weak self] in
-            await self?.prefetchPaperKnowledgeForSelectedPaper()
-        }
     }
 
     func handleSelectionChanged(text: String, pageIndex: Int, anchorRect: CGRect?) {
@@ -431,11 +425,6 @@ final class AppViewModel: ObservableObject {
         guard let paper = selectedPaper else { return nil }
         let knowledge = paperKnowledgeCache[paper.id]
         return PaperContext(paper: paper, selection: selection, knowledge: knowledge)
-    }
-
-    private func prefetchPaperKnowledgeForSelectedPaper() async {
-        guard let paper = selectedPaper else { return }
-        _ = await loadPaperKnowledgeIfNeeded(for: paper)
     }
 
     private func loadPaperKnowledgeIfNeeded(for paper: Paper) async -> PaperKnowledge? {

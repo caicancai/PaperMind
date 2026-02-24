@@ -31,7 +31,8 @@ struct PDFReaderView: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: PDFView, context: Context) {
-        if nsView.document?.documentURL != fileURL {
+        let currentURL = nsView.document?.documentURL?.standardizedFileURL
+        if currentURL != fileURL.standardizedFileURL {
             nsView.document = makeDocument(from: fileURL)
         }
 
@@ -45,10 +46,7 @@ struct PDFReaderView: NSViewRepresentable {
     }
 
     private func makeDocument(from url: URL) -> PDFDocument? {
-        guard let data = try? Data(contentsOf: url) else {
-            return PDFDocument(url: url)
-        }
-        return PDFDocument(data: data)
+        PDFDocument(url: url)
     }
 
     final class Coordinator: NSObject {

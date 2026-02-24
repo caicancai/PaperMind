@@ -154,18 +154,36 @@ struct ReaderPaneView: View {
             return CGPoint(x: size.width * 0.5, y: 140)
         }
 
-        let desiredX = rect.midX
-        let minX = popupWidth * 0.5 + 12
-        let maxX = size.width - popupWidth * 0.5 - 12
-        let x = min(max(desiredX, minX), maxX)
+        let horizontalPadding: CGFloat = 12
+        let verticalPadding: CGFloat = 12
+        let sideGap: CGFloat = 16
 
-        let preferredY = rect.minY - popupHeight * 0.5 - 10
-        if preferredY > popupHeight * 0.5 {
-            return CGPoint(x: x, y: preferredY)
+        let minX = popupWidth * 0.5 + horizontalPadding
+        let maxX = size.width - popupWidth * 0.5 - horizontalPadding
+        let minY = popupHeight * 0.5 + verticalPadding
+        let maxY = size.height - popupHeight * 0.5 - verticalPadding
+
+        // Prefer placing the popup on the side of selection to avoid blocking the selected paragraph.
+        let rightX = rect.maxX + popupWidth * 0.5 + sideGap
+        if rightX <= maxX {
+            let y = min(max(rect.midY, minY), maxY)
+            return CGPoint(x: rightX, y: y)
         }
 
-        let belowY = rect.maxY + popupHeight * 0.5 + 10
-        let maxY = size.height - popupHeight * 0.5 - 12
-        return CGPoint(x: x, y: min(belowY, maxY))
+        let leftX = rect.minX - popupWidth * 0.5 - sideGap
+        if leftX >= minX {
+            let y = min(max(rect.midY, minY), maxY)
+            return CGPoint(x: leftX, y: y)
+        }
+
+        // Fallback to above/below when horizontal space is not enough.
+        let centerX = min(max(rect.midX, minX), maxX)
+        let topY = rect.minY - popupHeight * 0.5 - 10
+        if topY >= minY {
+            return CGPoint(x: centerX, y: topY)
+        }
+
+        let bottomY = rect.maxY + popupHeight * 0.5 + 10
+        return CGPoint(x: centerX, y: min(max(bottomY, minY), maxY))
     }
 }
