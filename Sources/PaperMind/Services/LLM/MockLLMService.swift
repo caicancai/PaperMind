@@ -20,9 +20,13 @@ struct MockLLMService: LLMService {
         }
 
         let selectionText = context?.selection?.selectedText.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let hasKnowledge = !(context?.knowledge?.sampledText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
 
         if selectionText.isEmpty {
-            return "依据不足：当前没有选中文本。请先在论文中选择一段内容，再让我进行解释或总结。"
+            if hasKnowledge {
+                return "我已基于整篇论文的预读上下文回答“\(prompt)”。如果你希望更精准，我可以再结合你选中的具体段落深入解释。"
+            }
+            return "我先按你的问题“\(prompt)”给出通用解释。若你选中具体段落，我可以提供更精确的逐句分析。"
         }
 
         return "基于你选中的内容“\(selectionText.prefix(120))”，我对“\(prompt)”的回答是：这是一个 MVP 阶段的模拟回答，建议你继续追问具体术语或方法细节。"

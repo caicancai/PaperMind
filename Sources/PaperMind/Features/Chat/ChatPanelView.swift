@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ChatPanelView: View {
     @ObservedObject var viewModel: AppViewModel
+    @FocusState private var isInputFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -28,8 +29,12 @@ struct ChatPanelView: View {
                                 Text(message.role.rawValue.uppercased())
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
-                                Text(message.content)
-                                    .textSelection(.enabled)
+                                if message.role == .assistant {
+                                    MarkdownContentView(markdown: message.content)
+                                } else {
+                                    Text(message.content)
+                                        .textSelection(.enabled)
+                                }
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(8)
@@ -41,19 +46,40 @@ struct ChatPanelView: View {
                 .frame(minHeight: 260)
             }
 
-            HStack {
-                TextField("输入你的问题...", text: $viewModel.chatInput)
-                    .textFieldStyle(.roundedBorder)
+            VStack(alignment: .leading, spacing: 8) {
+                Text("输入问题")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
 
-                Button("发送") {
-                    Task { await viewModel.sendChatFromInput() }
+                TextEditor(text: $viewModel.chatInput)
+                    .frame(minHeight: 72, maxHeight: 120)
+                    .focused($isInputFocused)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(.gray.opacity(0.35), lineWidth: 1)
+                    )
+
+                HStack {
+                    Text("支持自由提问，也可结合当前选区讨论")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("发送") {
+                        Task { await viewModel.sendChatFromInput() }
+                    }
+                    .keyboardShortcut(.return, modifiers: [.command])
+                    .disabled(viewModel.chatState == .loading)
                 }
-                .disabled(viewModel.chatState == .loading)
             }
 
             statusView
 
             Spacer()
+        }
+        .onAppear {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                isInputFocused = true
+            }
         }
     }
 
@@ -70,6 +96,28 @@ struct ChatPanelView: View {
         case .failure(let message):
             Text(message)
                 .foregroundStyle(.red)
+        }
+    }
+}
+
+private struct MarkdownContentView: View {
+    let markdown: String
+
+    var body: some View {
+        if let attributed = try? AttributedString(
+            markdown: markdown,
+            options: AttributedString.MarkdownParsingOptions(
+                interpretedSyntax: .full,
+                failurePolicy: .returnPartiallyParsedIfPossible
+            )
+        ) {
+            Text(attributed)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            Text(markdown)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }

@@ -1,16 +1,33 @@
 import Foundation
 
 struct OpenAILLMService: LLMService {
+    let providerName: String
     let apiKey: String
     let model: String
+    let endpoint: URL
     let session: URLSession
     let timeoutSeconds: TimeInterval
+    let maxContextCharacters: Int
+    let retryCount: Int
 
-    init(apiKey: String, model: String = "gpt-4o-mini", session: URLSession = .shared, timeoutSeconds: TimeInterval = 15) {
+    init(
+        providerName: String = "openai",
+        apiKey: String,
+        model: String = "gpt-4o-mini",
+        endpoint: URL = URL(string: "https://api.openai.com/v1/chat/completions")!,
+        session: URLSession = .shared,
+        timeoutSeconds: TimeInterval = 40,
+        maxContextCharacters: Int = 8_000,
+        retryCount: Int = 2
+    ) {
+        self.providerName = providerName
         self.apiKey = apiKey
         self.model = model
+        self.endpoint = endpoint
         self.session = session
         self.timeoutSeconds = timeoutSeconds
+        self.maxContextCharacters = maxContextCharacters
+        self.retryCount = retryCount
     }
 
     func chat(messages: [ChatMessage], context: PaperContext?) async throws -> String {
@@ -25,17 +42,18 @@ struct OpenAILLMService: LLMService {
             temperature: 0.3
         )
 
-        var request = URLRequest(url: URL(string: "https://api.openai.com/v1/chat/completions")!)
+        var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
         request.timeoutInterval = timeoutSeconds
         request.addValue("application/json", forHTTPHeaderField: "Content-Type")
         request.addValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.httpBody = try JSONEncoder().encode(payload)
 
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await sendWithRetry(request: request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             let body = String(data: data, encoding: .utf8) ?? ""
-            throw PMError.network("LLM 请求失败: \(body)")
+            let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+            throw PMError.network("\(providerName) LLM 请求失败（HTTP \(status)）: \(body)")
         }
 
         let decoded = try JSONDecoder().decode(OpenAIChatResponse.self, from: data)
@@ -50,12 +68,54 @@ struct OpenAILLMService: LLMService {
     private func buildSystemPrompt(context: PaperContext?) -> String {
         let paperTitle = context?.paper.title ?? "未知论文"
         let selection = context?.selection?.selectedText ?? ""
+        let knowledge = context?.knowledge
 
-        if selection.isEmpty {
-            return "你是论文阅读助手。当前论文：\(paperTitle)。如果用户问题缺少上下文，请明确回复“依据不足”，并指出需要用户先选中论文片段。"
+        var base = "你是论文阅读助手。当前论文：\(paperTitle)。"
+
+        if let knowledge {
+            base += "你在回答前已经阅读过这篇论文的本地抽取上下文（页数：\(knowledge.pageCount)，采样字符：\(knowledge.sampledCharacterCount)）。请优先基于该上下文回答。"
+            if !knowledge.sampledText.isEmpty {
+                let clipped = String(knowledge.sampledText.prefix(maxContextCharacters))
+                let clippedHint = knowledge.sampledText.count > clipped.count ? "\n[注] 上下文过长，已截断。" : ""
+                base += "\n\n[论文上下文摘录]\n\(clipped)\(clippedHint)"
+            }
+        } else {
+            base += "当前尚未获取完整论文上下文。请先尽力回答，并明确不确定性。"
         }
 
-        return "你是论文阅读助手。当前论文：\(paperTitle)。当前选中片段：\(selection)。回答应优先基于该片段，并在信息不足时明确说明“依据不足”。"
+        if selection.isEmpty {
+            return base + "用户不一定会选中文本。即使没有选区，也要先基于已有论文上下文尽量回答；只有在确实无法判断时，再简要说明还需要哪些具体片段。"
+        }
+
+        return base + "\n\n当前选中片段：\(selection)。回答应优先基于该片段，并可结合整篇上下文组织更完整结论。"
+    }
+
+    private func sendWithRetry(request: URLRequest) async throws -> (Data, URLResponse) {
+        var lastError: Error?
+        for attempt in 0...retryCount {
+            do {
+                return try await session.data(for: request)
+            } catch {
+                lastError = error
+                let isLast = attempt == retryCount
+                guard !isLast, isTransient(error) else {
+                    throw error
+                }
+                let delay = UInt64((attempt + 1) * 400_000_000)
+                try? await Task.sleep(nanoseconds: delay)
+            }
+        }
+        throw lastError ?? PMError.network("\(providerName) LLM 请求失败")
+    }
+
+    private func isTransient(_ error: Error) -> Bool {
+        guard let urlError = error as? URLError else { return false }
+        switch urlError.code {
+        case .timedOut, .networkConnectionLost, .cannotConnectToHost, .notConnectedToInternet:
+            return true
+        default:
+            return false
+        }
     }
 }
 

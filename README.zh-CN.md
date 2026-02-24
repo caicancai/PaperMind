@@ -15,11 +15,15 @@
   - 选中文本后显示悬浮卡片
 - 翻译
   - 选区自动翻译
-  - 默认使用 Google 翻译，失败自动回退到 Mock
+  - 默认使用 Google 翻译
 - AI 对话
   - 右侧 AI 讨论栏
   - 可基于当前选区 `Explain` / `Summarize`
+  - 不选区也可自由提问
   - 支持“解释公式”快捷入口（检测到公式时显示）
+  - 支持 `OpenAI`、`DeepSeek`、`Kimi` 三家厂商
+  - 首次回答前会先本地预读论文并缓存上下文
+  - AI 回答按 Markdown 渲染显示
 
 ## 环境要求
 
@@ -31,23 +35,64 @@
 ```bash
 cd /Users/cc.cai/magic/PaperMind
 swift build
-swift run
+open .build/debug/PaperMind
 ```
 
 ## 配置 AI Provider
 
-当前通过环境变量选择：
+当前通过环境变量选择厂商。
 
-- 设置了 `OPENAI_API_KEY`：使用 OpenAI（失败自动回退 Mock）
-- 未设置 `OPENAI_API_KEY`：使用 Mock
+### 厂商切换
 
-示例：
+- `AI_PROVIDER=openai`
+- `AI_PROVIDER=deepseek`
+- `AI_PROVIDER=kimi`
+- `AI_PROVIDER=auto`（默认，按 OpenAI -> DeepSeek -> Kimi 顺序尝试，前提是对应 Key 已配置）
+
+也支持在项目根目录使用 `.env.local` 存放这些变量，应用会自动读取。
+
+### 各厂商 Key 与可选模型
+
+- OpenAI
+  - `OPENAI_API_KEY`
+  - 可选：`OPENAI_MODEL`（默认：`gpt-4o-mini`）
+- DeepSeek
+  - `DEEPSEEK_API_KEY`
+  - 可选：`DEEPSEEK_MODEL`（默认：`deepseek-chat`）
+- Kimi（Moonshot）
+  - `KIMI_API_KEY`
+  - 可选：`KIMI_MODEL`（默认：`moonshot-v1-8k`）
+
+### 示例
+
+使用 OpenAI：
 
 ```bash
-export OPENAI_API_KEY=your_api_key
+export AI_PROVIDER=openai
+export OPENAI_API_KEY=your_openai_key
 cd /Users/cc.cai/magic/PaperMind
 swift run
 ```
+
+使用 DeepSeek：
+
+```bash
+export AI_PROVIDER=deepseek
+export DEEPSEEK_API_KEY=your_deepseek_key
+cd /Users/cc.cai/magic/PaperMind
+swift run
+```
+
+使用 Kimi：
+
+```bash
+export AI_PROVIDER=kimi
+export KIMI_API_KEY=your_kimi_key
+cd /Users/cc.cai/magic/PaperMind
+swift run
+```
+
+若厂商不可用或 Key 缺失，会直接提示“未对接 AI/配置缺失”，不会静默回退 Mock。
 
 ## 公式解释交互
 
@@ -77,6 +122,7 @@ PaperMind/
 - 当前测试目标未启用（仅维护 `swift build` / `swift run` 流程）
 - 笔记/评论功能已在 UI 层临时下线
 - API Key 目前从环境变量读取（尚未接入 Keychain）
+- API Key 目前从环境变量或 `.env.local` 读取（尚未接入 Keychain）
 
 ## 路线图（简版）
 

@@ -11,6 +11,8 @@ struct SidebarView: View {
                 Spacer()
             }
 
+            paperReadStatus
+
             if !viewModel.selectedTextPreview.isEmpty {
                 GroupBox("当前选区") {
                     VStack(alignment: .leading, spacing: 8) {
@@ -47,5 +49,29 @@ struct SidebarView: View {
             ChatPanelView(viewModel: viewModel)
         }
         .padding(10)
+    }
+
+    @ViewBuilder
+    private var paperReadStatus: some View {
+        switch viewModel.paperContextState {
+        case .idle:
+            EmptyView()
+        case .loading:
+            HStack(spacing: 6) {
+                ProgressView()
+                    .controlSize(.small)
+                Text("AI 正在阅读当前论文...")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        case .success:
+            Text("论文上下文已加载")
+                .font(.caption)
+                .foregroundStyle(.green)
+        case .failure(let message):
+            Text(message)
+                .font(.caption)
+                .foregroundStyle(.orange)
+        }
     }
 }

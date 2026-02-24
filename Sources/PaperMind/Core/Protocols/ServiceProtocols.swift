@@ -8,6 +8,10 @@ protocol LLMService {
     func chat(messages: [ChatMessage], context: PaperContext?) async throws -> String
 }
 
+protocol PaperContextBuilderService {
+    func buildKnowledge(for paper: Paper) async throws -> PaperKnowledge
+}
+
 protocol PaperRepository {
     func listPapers() async throws -> [Paper]
     func addPaper(fileURL: URL) async throws -> Paper

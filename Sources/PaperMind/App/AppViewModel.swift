@@ -12,6 +12,7 @@ final class AppViewModel: ObservableObject {
 
     @Published var translationState: RequestState = .idle
     @Published var translationResult: String = ""
+    @Published var paperContextState: RequestState = .idle
 
     @Published var chatSessionID: UUID = UUID()
     @Published var chatMode: ChatMode = .explain
@@ -32,6 +33,7 @@ final class AppViewModel: ObservableObject {
 
     private let dependencies: AppDependencies
     private var autoTranslateTask: Task<Void, Never>?
+    private var paperKnowledgeCache: [UUID: PaperKnowledge] = [:]
 
     init(dependencies: AppDependencies) {
         self.dependencies = dependencies
@@ -52,6 +54,9 @@ final class AppViewModel: ObservableObject {
                 selectedPaperID = papers.first?.id
             }
             await refreshNotesForSelectedPaper()
+            Task { [weak self] in
+                await self?.prefetchPaperKnowledgeForSelectedPaper()
+            }
         } catch {
             chatState = .failure(error.localizedDescription)
         }
@@ -80,6 +85,7 @@ final class AppViewModel: ObservableObject {
             isMathSelection = false
             translationResult = ""
             translationState = .idle
+            paperContextState = .idle
             await refreshPapers()
         } catch {
             chatState = .failure(error.localizedDescription)
@@ -95,7 +101,11 @@ final class AppViewModel: ObservableObject {
         isMathSelection = false
         translationResult = ""
         translationState = .idle
+        paperContextState = .idle
         await refreshNotesForSelectedPaper()
+        Task { [weak self] in
+            await self?.prefetchPaperKnowledgeForSelectedPaper()
+        }
     }
 
     func handleSelectionChanged(text: String, pageIndex: Int, anchorRect: CGRect?) {
@@ -379,6 +389,10 @@ final class AppViewModel: ObservableObject {
         chatState = .loading
 
         do {
+            if let paper = selectedPaper {
+                _ = await loadPaperKnowledgeIfNeeded(for: paper)
+            }
+
             let response = try await dependencies.llmService.chat(
                 messages: chatMessages,
                 context: buildContext(selection: selection)
@@ -400,7 +414,33 @@ final class AppViewModel: ObservableObject {
 
     private func buildContext(selection: TextSelection?) -> PaperContext? {
         guard let paper = selectedPaper else { return nil }
-        return PaperContext(paper: paper, selection: selection)
+        let knowledge = paperKnowledgeCache[paper.id]
+        return PaperContext(paper: paper, selection: selection, knowledge: knowledge)
+    }
+
+    private func prefetchPaperKnowledgeForSelectedPaper() async {
+        guard let paper = selectedPaper else { return }
+        _ = await loadPaperKnowledgeIfNeeded(for: paper)
+    }
+
+    private func loadPaperKnowledgeIfNeeded(for paper: Paper) async -> PaperKnowledge? {
+        if let cached = paperKnowledgeCache[paper.id] {
+            if case .idle = paperContextState {
+                paperContextState = .success
+            }
+            return cached
+        }
+
+        paperContextState = .loading
+        do {
+            let knowledge = try await dependencies.paperContextBuilder.buildKnowledge(for: paper)
+            paperKnowledgeCache[paper.id] = knowledge
+            paperContextState = .success
+            return knowledge
+        } catch {
+            paperContextState = .failure("论文预读失败：\(error.localizedDescription)")
+            return nil
+        }
     }
 
     var visibleThreads: [Note] {

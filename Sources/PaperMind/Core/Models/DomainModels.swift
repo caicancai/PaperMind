@@ -165,6 +165,14 @@ struct NoteAnchorRect: Codable, Equatable, Hashable {
 struct PaperContext: Codable, Equatable {
     var paper: Paper
     var selection: TextSelection?
+    var knowledge: PaperKnowledge?
+}
+
+struct PaperKnowledge: Codable, Equatable {
+    var generatedAt: Date
+    var pageCount: Int
+    var sampledCharacterCount: Int
+    var sampledText: String
 }
 
 enum ChatMode: String, CaseIterable, Identifiable {

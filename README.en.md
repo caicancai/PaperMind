@@ -15,11 +15,15 @@ A Swift/macOS paper-reading assistant focused on three core workflows:
   - Floating popup appears after text selection
 - Translation
   - Auto-translate selected text
-  - Google Translate by default, with automatic fallback to Mock
+  - Google Translate by default
 - AI Chat
   - Dedicated AI discussion sidebar
   - Ask based on current selection with `Explain` / `Summarize`
+  - Free-form questions without selection are supported
   - Formula explanation quick action when formula-like text is detected
+  - Supports `OpenAI`, `DeepSeek`, and `Kimi` providers
+  - Reads and caches full-paper local context before first answer
+  - Assistant messages are rendered as Markdown
 
 ## Requirements
 
@@ -31,23 +35,64 @@ A Swift/macOS paper-reading assistant focused on three core workflows:
 ```bash
 cd /Users/cc.cai/magic/PaperMind
 swift build
-swift run
+open .build/debug/PaperMind
 ```
 
 ## Configure AI Provider
 
-Provider selection is currently environment-variable based:
+Provider selection is environment-variable based.
 
-- `OPENAI_API_KEY` is set: use OpenAI (with automatic fallback to Mock on failure)
-- `OPENAI_API_KEY` is not set: use Mock
+### Provider switch
 
-Example:
+- `AI_PROVIDER=openai`
+- `AI_PROVIDER=deepseek`
+- `AI_PROVIDER=kimi`
+- `AI_PROVIDER=auto` (default, tries OpenAI -> DeepSeek -> Kimi if corresponding keys exist)
+
+You can set vars in `.env.local` (project root). The app loads this file automatically.
+
+### Credentials and optional models
+
+- OpenAI
+  - `OPENAI_API_KEY`
+  - optional: `OPENAI_MODEL` (default: `gpt-4o-mini`)
+- DeepSeek
+  - `DEEPSEEK_API_KEY`
+  - optional: `DEEPSEEK_MODEL` (default: `deepseek-chat`)
+- Kimi (Moonshot)
+  - `KIMI_API_KEY`
+  - optional: `KIMI_MODEL` (default: `moonshot-v1-8k`)
+
+### Examples
+
+Use OpenAI:
 
 ```bash
-export OPENAI_API_KEY=your_api_key
+export AI_PROVIDER=openai
+export OPENAI_API_KEY=your_openai_key
 cd /Users/cc.cai/magic/PaperMind
 swift run
 ```
+
+Use DeepSeek:
+
+```bash
+export AI_PROVIDER=deepseek
+export DEEPSEEK_API_KEY=your_deepseek_key
+cd /Users/cc.cai/magic/PaperMind
+swift run
+```
+
+Use Kimi:
+
+```bash
+export AI_PROVIDER=kimi
+export KIMI_API_KEY=your_kimi_key
+cd /Users/cc.cai/magic/PaperMind
+swift run
+```
+
+If provider or key is unavailable, the app reports `AI not connected` style errors (no silent Mock fallback).
 
 ## Formula Explanation Flow
 
@@ -76,7 +121,7 @@ PaperMind/
 
 - Test target is currently disabled (project maintained with `swift build` / `swift run` flow)
 - Notes/comments are temporarily disabled in UI
-- API key is currently read from environment variables (Keychain integration pending)
+- API keys are currently read from environment variables / `.env.local` (Keychain integration pending)
 
 ## Roadmap (Short)
 
