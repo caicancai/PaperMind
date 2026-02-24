@@ -10,6 +10,7 @@ A Swift/macOS paper-reading assistant focused on three core workflows:
 - Paper Library
   - Import local PDF files
   - Switch and remove papers
+  - Close current paper without deleting it
 - Reading Experience
   - Reading-first center column layout
   - Floating popup appears after text selection

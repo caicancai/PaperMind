@@ -94,6 +94,19 @@ final class AppViewModel: ObservableObject {
         }
     }
 
+    func closeCurrentPaper() {
+        autoTranslateTask?.cancel()
+        selectedPaperID = nil
+        currentSelection = nil
+        currentSelectionAnchor = nil
+        currentReaderPageIndex = 0
+        selectedTextPreview = ""
+        isMathSelection = false
+        translationResult = ""
+        translationState = .idle
+        paperContextState = .idle
+    }
+
     func didSelectPaper(id: UUID?) async {
         autoTranslateTask?.cancel()
         selectedPaperID = id

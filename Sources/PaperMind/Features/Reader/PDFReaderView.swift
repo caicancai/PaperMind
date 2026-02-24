@@ -23,7 +23,7 @@ struct PDFReaderView: NSViewRepresentable {
         view.autoScales = true
         view.displaysAsBook = false
         view.displayMode = .singlePageContinuous
-        view.document = PDFDocument(url: fileURL)
+        view.document = makeDocument(from: fileURL)
 
         context.coordinator.bind(to: view)
         context.coordinator.syncThreadAnnotations(view: view, threads: threadAnchors, focusedThreadID: focusedThreadID)
@@ -32,7 +32,7 @@ struct PDFReaderView: NSViewRepresentable {
 
     func updateNSView(_ nsView: PDFView, context: Context) {
         if nsView.document?.documentURL != fileURL {
-            nsView.document = PDFDocument(url: fileURL)
+            nsView.document = makeDocument(from: fileURL)
         }
 
         context.coordinator.syncThreadAnnotations(view: nsView, threads: threadAnchors, focusedThreadID: focusedThreadID)
@@ -42,6 +42,13 @@ struct PDFReaderView: NSViewRepresentable {
             focusedThreadID: focusedThreadID,
             threads: threadAnchors
         )
+    }
+
+    private func makeDocument(from url: URL) -> PDFDocument? {
+        guard let data = try? Data(contentsOf: url) else {
+            return PDFDocument(url: url)
+        }
+        return PDFDocument(data: data)
     }
 
     final class Coordinator: NSObject {

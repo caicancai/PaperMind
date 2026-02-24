@@ -37,6 +37,11 @@ struct LibraryView: View {
                     Task { await viewModel.refreshPapers() }
                 }
 
+                Button("关闭当前") {
+                    viewModel.closeCurrentPaper()
+                }
+                .disabled(viewModel.selectedPaperID == nil)
+
                 Spacer()
 
                 Button("删除选中") {
