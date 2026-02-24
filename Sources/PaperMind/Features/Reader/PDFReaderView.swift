@@ -7,11 +7,13 @@ struct PDFReaderView: NSViewRepresentable {
     let focusedThreadID: UUID?
     let focusThreadTick: Int
     var onSelectionChange: (String, Int, CGRect?, CGRect?) -> Void
+    var onPageChange: (Int) -> Void
     var onThreadAnnotationTap: (UUID) -> Void
 
     func makeCoordinator() -> Coordinator {
         Coordinator(
             onSelectionChange: onSelectionChange,
+            onPageChange: onPageChange,
             onThreadAnnotationTap: onThreadAnnotationTap
         )
     }
@@ -44,22 +46,29 @@ struct PDFReaderView: NSViewRepresentable {
 
     final class Coordinator: NSObject {
         private var observer: NSObjectProtocol?
+        private var pageObserver: NSObjectProtocol?
         private var clickGesture: NSClickGestureRecognizer?
         private let onSelectionChange: (String, Int, CGRect?, CGRect?) -> Void
+        private let onPageChange: (Int) -> Void
         private let onThreadAnnotationTap: (UUID) -> Void
         private var lastFocusThreadTick: Int = -1
 
         init(
             onSelectionChange: @escaping (String, Int, CGRect?, CGRect?) -> Void,
+            onPageChange: @escaping (Int) -> Void,
             onThreadAnnotationTap: @escaping (UUID) -> Void
         ) {
             self.onSelectionChange = onSelectionChange
+            self.onPageChange = onPageChange
             self.onThreadAnnotationTap = onThreadAnnotationTap
         }
 
         deinit {
             if let observer {
                 NotificationCenter.default.removeObserver(observer)
+            }
+            if let pageObserver {
+                NotificationCenter.default.removeObserver(pageObserver)
             }
         }
 
@@ -89,6 +98,17 @@ struct PDFReaderView: NSViewRepresentable {
             gesture.buttonMask = 0x1
             view.addGestureRecognizer(gesture)
             clickGesture = gesture
+
+            pageObserver = NotificationCenter.default.addObserver(
+                forName: Notification.Name.PDFViewPageChanged,
+                object: view,
+                queue: .main
+            ) { [weak self] _ in
+                guard let self,
+                      let document = view.document,
+                      let currentPage = view.currentPage else { return }
+                self.onPageChange(document.index(for: currentPage))
+            }
         }
 
         @objc

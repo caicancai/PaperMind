@@ -9,16 +9,6 @@ struct ChatPanelView: View {
             HStack {
                 Text("论文对话")
                     .font(.headline)
-
-                Spacer()
-
-                Picker("模式", selection: $viewModel.chatMode) {
-                    ForEach(ChatMode.allCases) { mode in
-                        Text(mode.rawValue).tag(mode)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .frame(width: 220)
             }
 
             GroupBox("消息") {
@@ -104,8 +94,9 @@ private struct MarkdownContentView: View {
     let markdown: String
 
     var body: some View {
+        let normalized = normalizeMarkdown(markdown)
         if let attributed = try? AttributedString(
-            markdown: markdown,
+            markdown: normalized,
             options: AttributedString.MarkdownParsingOptions(
                 interpretedSyntax: .full,
                 failurePolicy: .returnPartiallyParsedIfPossible
@@ -115,9 +106,20 @@ private struct MarkdownContentView: View {
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
         } else {
-            Text(markdown)
+            Text(normalized)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    private func normalizeMarkdown(_ raw: String) -> String {
+        let t = raw.replacingOccurrences(of: "\r\n", with: "\n")
+        // If model returns one long line, inject lightweight paragraph breaks after sentence endings.
+        if !t.contains("\n"), t.count > 160 {
+            return t
+                .replacingOccurrences(of: "。", with: "。\n\n")
+                .replacingOccurrences(of: ". ", with: ".\n\n")
+        }
+        return t
     }
 }

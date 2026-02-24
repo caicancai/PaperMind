@@ -18,7 +18,7 @@
   - 默认使用 Google 翻译
 - AI 对话
   - 右侧 AI 讨论栏
-  - 可基于当前选区 `Explain` / `Summarize`
+  - 可基于当前选区 `Explain`
   - 不选区也可自由提问
   - 支持“解释公式”快捷入口（检测到公式时显示）
   - 支持 `OpenAI`、`DeepSeek`、`Kimi` 三家厂商
@@ -71,7 +71,7 @@ open .build/debug/PaperMind
 export AI_PROVIDER=openai
 export OPENAI_API_KEY=your_openai_key
 cd /Users/cc.cai/magic/PaperMind
-swift run
+open .build/debug/PaperMind
 ```
 
 使用 DeepSeek：
@@ -80,7 +80,7 @@ swift run
 export AI_PROVIDER=deepseek
 export DEEPSEEK_API_KEY=your_deepseek_key
 cd /Users/cc.cai/magic/PaperMind
-swift run
+open .build/debug/PaperMind
 ```
 
 使用 Kimi：
@@ -89,7 +89,7 @@ swift run
 export AI_PROVIDER=kimi
 export KIMI_API_KEY=your_kimi_key
 cd /Users/cc.cai/magic/PaperMind
-swift run
+open .build/debug/PaperMind
 ```
 
 若厂商不可用或 Key 缺失，会直接提示“未对接 AI/配置缺失”，不会静默回退 Mock。
@@ -104,25 +104,15 @@ swift run
 - 公式作用
 - 简单代入示例
 
-## 项目结构
-
-```text
-PaperMind/
-  Agent.md
-  Package.swift
-  Sources/PaperMind/
-    App/
-    Core/
-    Features/
-    Services/
-```
-
 ## 已知限制
 
-- 当前测试目标未启用（仅维护 `swift build` / `swift run` 流程）
+- 当前测试目标未启用（当前仅维护 `swift build` 流程）
 - 笔记/评论功能已在 UI 层临时下线
-- API Key 目前从环境变量读取（尚未接入 Keychain）
 - API Key 目前从环境变量或 `.env.local` 读取（尚未接入 Keychain）
+
+## License
+
+MIT，详见 [LICENSE](./LICENSE)。
 
 ## 路线图（简版）
 

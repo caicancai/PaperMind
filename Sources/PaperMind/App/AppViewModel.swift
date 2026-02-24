@@ -7,6 +7,7 @@ final class AppViewModel: ObservableObject {
 
     @Published var currentSelection: TextSelection?
     @Published var currentSelectionAnchor: NoteAnchorRect?
+    @Published var currentReaderPageIndex: Int = 0
     @Published var selectedTextPreview: String = ""
     @Published var isMathSelection: Bool = false
 
@@ -16,6 +17,7 @@ final class AppViewModel: ObservableObject {
 
     @Published var chatSessionID: UUID = UUID()
     @Published var chatMode: ChatMode = .explain
+    @Published var thinkingMode: ThinkingMode = .fast
     @Published var chatMessages: [ChatMessage] = []
     @Published var chatInput: String = ""
     @Published var chatState: RequestState = .idle
@@ -109,6 +111,7 @@ final class AppViewModel: ObservableObject {
     }
 
     func handleSelectionChanged(text: String, pageIndex: Int, anchorRect: CGRect?) {
+        currentReaderPageIndex = pageIndex
         updateSelection(text: text, pageIndex: pageIndex, anchorRect: anchorRect)
 
         autoTranslateTask?.cancel()
@@ -175,22 +178,14 @@ final class AppViewModel: ObservableObject {
             return
         }
 
-        if chatMode == .summarize {
-            chatInput = "Summarize: 请总结这段内容的核心要点，并给出 3 条关键结论。"
-        } else {
-            chatInput = "Explain: 请解释这段内容的核心含义，并说明它在论文中的作用。"
-        }
+        chatMode = .explain
+        chatInput = "Explain: 请解释这段内容的核心含义，并说明它在论文中的作用。"
         await sendChatMessage(selection: selection)
     }
 
     func explainFormulaUsingSelection() async {
         guard let selection = currentSelection else {
             chatState = .failure("请先选择公式")
-            return
-        }
-
-        guard isMathSelection else {
-            chatState = .failure("当前选区看起来不像公式，可用“解释选区”继续")
             return
         }
 
@@ -390,7 +385,14 @@ final class AppViewModel: ObservableObject {
 
         do {
             if let paper = selectedPaper {
-                _ = await loadPaperKnowledgeIfNeeded(for: paper)
+                if thinkingMode == .deep {
+                    _ = await loadPaperKnowledgeIfNeeded(for: paper)
+                } else {
+                    Task { [weak self] in
+                        guard let self else { return }
+                        _ = await self.loadPaperKnowledgeIfNeeded(for: paper)
+                    }
+                }
             }
 
             let response = try await dependencies.llmService.chat(

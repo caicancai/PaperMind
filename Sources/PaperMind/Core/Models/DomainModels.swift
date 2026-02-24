@@ -177,7 +177,13 @@ struct PaperKnowledge: Codable, Equatable {
 
 enum ChatMode: String, CaseIterable, Identifiable {
     case explain = "Explain"
-    case summarize = "Summarize"
+
+    var id: String { rawValue }
+}
+
+enum ThinkingMode: String, CaseIterable, Identifiable {
+    case fast = "Fast"
+    case deep = "Deep"
 
     var id: String { rawValue }
 }

@@ -17,6 +17,8 @@ struct ReaderPaneView: View {
                         ) { text, pageIndex, viewRect, pageRect in
                             selectionRect = viewRect
                             viewModel.handleSelectionChanged(text: text, pageIndex: pageIndex, anchorRect: pageRect)
+                        } onPageChange: { pageIndex in
+                            viewModel.currentReaderPageIndex = pageIndex
                         } onThreadAnnotationTap: { threadID in
                             _ = threadID
                         }
@@ -129,11 +131,10 @@ struct ReaderPaneView: View {
                 Button("问 AI") {
                     Task { await viewModel.askAIUsingSelection() }
                 }
-                if viewModel.isMathSelection {
-                    Button("解释公式") {
-                        Task { await viewModel.explainFormulaUsingSelection() }
-                    }
+                Button("解释公式") {
+                    Task { await viewModel.explainFormulaUsingSelection() }
                 }
+                .disabled(viewModel.currentSelection == nil)
 
                 Spacer()
             }

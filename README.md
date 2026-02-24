@@ -18,7 +18,7 @@ A Swift/macOS paper-reading assistant focused on three core workflows:
   - Google Translate by default
 - AI Chat
   - Dedicated AI discussion sidebar
-  - Ask based on current selection with `Explain` / `Summarize`
+  - Ask based on current selection with `Explain`
   - Free-form questions without selection are supported
   - Formula explanation quick action when formula-like text is detected
   - Supports `OpenAI`, `DeepSeek`, and `Kimi` providers
@@ -71,7 +71,7 @@ Use OpenAI:
 export AI_PROVIDER=openai
 export OPENAI_API_KEY=your_openai_key
 cd /Users/cc.cai/magic/PaperMind
-swift run
+open .build/debug/PaperMind
 ```
 
 Use DeepSeek:
@@ -80,7 +80,7 @@ Use DeepSeek:
 export AI_PROVIDER=deepseek
 export DEEPSEEK_API_KEY=your_deepseek_key
 cd /Users/cc.cai/magic/PaperMind
-swift run
+open .build/debug/PaperMind
 ```
 
 Use Kimi:
@@ -89,7 +89,7 @@ Use Kimi:
 export AI_PROVIDER=kimi
 export KIMI_API_KEY=your_kimi_key
 cd /Users/cc.cai/magic/PaperMind
-swift run
+open .build/debug/PaperMind
 ```
 
 If provider or key is unavailable, the app reports `AI not connected` style errors (no silent Mock fallback).
@@ -104,24 +104,15 @@ If provider or key is unavailable, the app reports `AI not connected` style erro
 - Role of the formula in the paper
 - A simple numeric example
 
-## Project Structure
-
-```text
-PaperMind/
-  Agent.md
-  Package.swift
-  Sources/PaperMind/
-    App/
-    Core/
-    Features/
-    Services/
-```
-
 ## Known Limitations
 
-- Test target is currently disabled (project maintained with `swift build` / `swift run` flow)
+- Test target is currently disabled (project currently maintained with `swift build` flow)
 - Notes/comments are temporarily disabled in UI
 - API keys are currently read from environment variables / `.env.local` (Keychain integration pending)
+
+## License
+
+MIT. See [LICENSE](./LICENSE).
 
 ## Roadmap (Short)
 

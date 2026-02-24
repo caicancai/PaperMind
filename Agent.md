@@ -1,37 +1,36 @@
 # Agent.md
 
-## 项目名称
-PaperMind（Swift 论文阅读助手）
+## Project Name
+PaperMind (Swift Paper Reading Assistant)
 
-## 目标
-构建一个基于 Swift/macOS 的论文阅读应用，核心能力：
-1. 导入并阅读论文（优先 PDF）。
-2. 划词/划句翻译（中英互译）。
-3. 就论文内容与大模型对话（问答、总结、解释术语）。
-4. 做结构化笔记（按论文、按片段、按时间）。
+## Goal
+Build a Swift/macOS paper-reading app with these core capabilities:
+1. Import and read papers (PDF-first).
+2. Selection-based translation.
+3. Chat with LLMs about paper content (Q&A, explanation).
+4. Structured notes/comments (planned for future iterations).
 
-## MVP 范围
-1. 论文库：本地导入、列表展示、最近阅读。
-2. 阅读器：显示 PDF，支持文本选择事件。
-3. 翻译：对选中文本调用翻译服务并展示结果。
-4. AI 对话：以“当前论文 + 当前选中内容”为上下文发起问答。
-5. 笔记：创建/编辑/删除笔记，支持绑定到论文和引用片段。
-6. 本地持久化：论文元数据、会话和笔记持久化。
+## MVP Scope
+1. Paper library: local import, list, switch.
+2. Reader: PDF display with text-selection events.
+3. Translation: translate selected text and display result.
+4. AI chat: ask with paper context (selection optional).
+5. Local persistence: paper metadata and app data persisted locally.
 
-## 非目标（当前阶段）
-1. 云同步与多端实时同步。
-2. OCR（扫描版 PDF 识别）。
-3. 团队协作与分享。
-4. 复杂引用管理（BibTeX/EndNote 深度集成）。
+## Out of Scope (Current Stage)
+1. Cloud sync / cross-device realtime sync.
+2. OCR for scanned PDFs as a core workflow.
+3. Team collaboration and sharing.
+4. Deep citation manager integration.
 
-## 技术栈
-1. 语言与框架：Swift 5.10+，SwiftUI，PDFKit。
-2. 架构：MVVM + Service Layer + Repository。
-3. 存储：首版可用 JSON/SQLite；后续迁移 SwiftData/CoreData。
-4. 网络：URLSession。
-5. LLM/翻译：Provider 抽象，支持后续接 OpenAI/DeepL/Google/自建服务。
+## Tech Stack
+1. Swift 5.10+, SwiftUI, PDFKit.
+2. MVVM + Service Layer + Repository.
+3. Local storage with JSON (future migration possible).
+4. Networking via URLSession.
+5. Provider abstraction for LLM/translation.
 
-## 建议目录结构
+## Suggested Structure
 ```text
 PaperMind/
   App/
@@ -42,7 +41,6 @@ PaperMind/
     Reader/
     Translate/
     Chat/
-    Notes/
   Core/
     Models/
     Protocols/
@@ -52,12 +50,10 @@ PaperMind/
     Translation/
     Storage/
     Parsing/
-  Resources/
-  Tests/
 ```
 
-## 领域模型（最小集）
-1. Paper
+## Domain Models (Minimal)
+1. `Paper`
 - `id: UUID`
 - `title: String`
 - `authors: [String]`
@@ -66,14 +62,14 @@ PaperMind/
 - `createdAt: Date`
 - `lastOpenedAt: Date?`
 
-2. TextSelection
+2. `TextSelection`
 - `paperID: UUID`
 - `pageIndex: Int`
 - `selectedText: String`
 - `contextBefore: String?`
 - `contextAfter: String?`
 
-3. TranslationRecord
+3. `TranslationRecord`
 - `id: UUID`
 - `selection: TextSelection`
 - `sourceLang: String`
@@ -81,25 +77,14 @@ PaperMind/
 - `translatedText: String`
 - `createdAt: Date`
 
-4. ChatMessage
+4. `ChatMessage`
 - `id: UUID`
 - `sessionID: UUID`
 - `role: user | assistant | system`
 - `content: String`
 - `createdAt: Date`
 
-5. Note
-- `id: UUID`
-- `paperID: UUID`
-- `title: String`
-- `content: String`
-- `quote: String?`
-- `pageIndex: Int?`
-- `tags: [String]`
-- `createdAt: Date`
-- `updatedAt: Date`
-
-## 核心协议（先抽象后实现）
+## Core Protocols
 ```swift
 protocol TranslationService {
     func translate(text: String, source: String?, target: String) async throws -> String
@@ -114,96 +99,60 @@ protocol PaperRepository {
     func addPaper(fileURL: URL) async throws -> Paper
     func removePaper(id: UUID) async throws
 }
-
-protocol NoteRepository {
-    func listNotes(paperID: UUID) async throws -> [Note]
-    func save(note: Note) async throws
-    func delete(noteID: UUID) async throws
-}
 ```
 
-## UI 交互要求
-1. 主界面三栏：论文列表 | 阅读区 | AI 侧边栏。
-2. 在阅读区选择文本后，应立即出现快捷操作：
-- `翻译`
-- `问 AI`
-- `解释公式`（仅当检测到公式选区时显示）
-3. 当前交互基线：选中后在阅读区出现就地悬浮窗（自动翻译 + 快捷操作），减少视线跳转。
-4. 所有网络请求状态都必须有可见反馈：`loading/success/error`。
+## UI Requirements
+1. Three-column layout: Library | Reader | AI Sidebar.
+2. Selection popup in reader should provide:
+- `Translate`
+- `Ask AI`
+- `Explain Formula`
+3. Selection popup should minimize context switching.
+4. All async actions should expose clear `loading/success/error` states.
 
-## Prompt 约定（给 LLM）
-1. 回答尽量基于“当前论文内容 + 选中文本”。
-2. 当信息不足时，明确说“依据不足”，并给出需要的上下文。
-3. 支持两种模式：
-- `Explain`: 解释术语/段落。
-- `Summarize`: 摘要当前章节/选区。
+## Prompt Rules
+1. Answers should use paper context first.
+2. When uncertain, state missing evidence clearly.
+3. Current quick mode is `Explain`.
 
-## 安全与隐私
-1. 默认本地存储，不上传整篇论文；只上传用户触发的选中文本与必要上下文。
-2. API Key 使用系统 Keychain 存储，不写入明文文件。
-3. 提供“清空会话与缓存”能力。
+## Security & Privacy
+1. Keep data local by default.
+2. Do not upload full paper by default; send necessary context only.
+3. API keys should move to Keychain in future (currently env/.env.local).
 
-## 开发阶段计划
-1. Phase 1: 项目骨架 + 模型 + Mock Service + 基础 UI。
-2. Phase 2: PDF 阅读与选择事件接入。
-3. Phase 3: 接入真实翻译与 LLM Provider。
-4. Phase 4: 笔记持久化与检索。
-5. Phase 5: 性能优化与可用性打磨。
+## Current Status (2026-02-24)
+1. Implemented: three-column UI, PDF reading, selection events, translation popup, AI sidebar.
+2. Implemented: Google translation by default.
+3. Implemented: LLM providers OpenAI / DeepSeek / Kimi.
+4. Implemented: strict AI mode (no silent fallback to Mock when provider is missing/unavailable).
+5. Implemented: paper context pre-read and cache before/around answering.
+6. Implemented: assistant responses rendered as Markdown.
+7. Implemented: Thinking mode selector (`Fast` default, `Deep` optional).
+8. Disabled in UI: notes/comments flow (kept out of main workflow for now).
+9. Tests are currently not enabled in package targets.
 
-## 验收标准（MVP）
-1. 可导入至少 3 篇 PDF 并切换阅读。
-2. 任意选中文本可在 2 秒内返回翻译（Mock/真实均可）。
-3. 能围绕选中内容发起至少 3 轮问答，消息可回看。
-4. 笔记可增删改查，并能定位到所属论文。
+## Key Interaction Decisions
+1. Reading-first layout and behavior take priority.
+2. In-reader floating popup is preferred over moving users to side panels.
+3. AI workflow should support both with-selection and free-form questions.
 
-## 当前实现状态（2026-02-24）
-1. 已完成：SwiftUI 三栏主界面、PDF 阅读与选区事件、AI 对话面板。
-2. 已完成：`PaperRepository` / `NoteRepository` JSON 持久化。
-3. 已完成：翻译默认使用 Google。
-4. 已完成：LLM 支持 OpenAI / DeepSeek / Kimi（环境变量与 `.env.local` 配置）。
-5. 已完成：阅读区“划词悬浮翻译窗”（选中即自动翻译，支持重试/问 AI/解释公式）。
-6. 已完成：阅读区宽度优先（中栏最小宽度提升）与悬浮窗位置跟随动画、自适应宽度。
-7. 当前限制：测试目标已从 `Package.swift` 移除，项目当前按“仅构建运行”维护。
-8. 变更说明：按产品决策，笔记/评论功能已在 UI 层临时下线，当前主流程聚焦“阅读 + 划词翻译 + AI 对话”。
-9. 交互更新：右侧侧栏为 AI 专用讨论区，支持基于当前选区或不选区提问。
-10. 已完成：AI 首次回答前会预读并缓存论文上下文（本地抽取），后续回答复用缓存。
-11. 已完成：AI 回答按 Markdown 渲染显示。
-12. 已完成：AI 严格模式，不再静默降级 Mock；未配置/未对接时直接报错提示。
+## Must-Follow Engineering Notes
+1. Do not degrade reading area significantly.
+2. Use cancellation/debounce for selection-triggered async tasks.
+3. Provide actionable AI/network error messages.
+4. Keep provider-specific logic out of views.
+5. Preserve privacy boundaries for paper content.
 
-## 最近核心改动（交互层）
-1. 由“侧边栏翻译为主”调整为“阅读区就地翻译为主”，减少跨栏操作成本。
-2. 选区变化触发防抖自动翻译，避免频繁请求导致闪烁与无效调用。
-3. 悬浮窗采用上方优先、下方兜底的定位策略，并对边界进行裁剪防止越界。
-4. 阅读列宽度显著提高，确保论文正文可读性优先于工具面板。
+## Next Priorities
+1. Chat persistence by paper/session (restore history after restart).
+2. Comments/notes feature redesign and reintroduction.
+3. Model/provider switch UI (instead of env-only control).
+4. Keychain integration for API keys.
+5. Better context extraction quality and prompt control.
 
-## 笔记状态说明
-1. 笔记/评论功能代码仍存在于数据层，但 UI 入口已下线。
-2. 当前版本不作为主流程验收项；如重启该能力，应重新定义交互和优先级。
-
-## 实现注意点（必须遵守）
-1. 阅读优先：任何新功能不得明显压缩阅读区宽度，必要时自动折叠侧栏。
-2. 锚点稳定性：PDF 高亮锚点不能只依赖纯文本匹配，至少保存 `paperID + pageIndex + quote + rect`。
-3. 性能：选区事件必须做防抖和取消，避免快速拖选触发并发翻译请求。
-4. 可恢复性：AI 请求失败时必须给出明确可执行提示（配置缺失、网络超时、HTTP 错误码）。
-5. 一致性：悬浮窗与侧栏的 AI 动作必须复用同一套上下文与 prompt 规则。
-6. 可扩展：继续坚持协议层抽象，禁止把 Provider 细节直接写进 ViewModel。
-7. 隐私：默认仅发送选区和必要上下文，不上传整篇论文正文。
-
-## 待完善清单（按优先级）
-1. 高优先级：完善 PDF 上下文抽取（`contextBefore/contextAfter`），提升翻译和问答准确性。
-2. 高优先级：对话历史持久化（按论文保存 session，重启后可恢复）。
-3. 高优先级：AI 请求稳定性（超时重试策略、上下文长度控制、错误分类与提示优化）。
-4. 高优先级：模型与厂商切换 UI（不依赖手改环境变量）。
-5. 中优先级：接入 Keychain 管理 API Key，避免明文环境变量。
-6. 中优先级：翻译服务增强（语言检测、术语保留、失败重试与更清晰错误提示）。
-7. 中优先级：LLM Prompt 分层（Explain/Summarize/Formula 分离模板，并加入 token/上下文长度控制）。
-8. 中优先级：导入体验优化（重复导入提示、文件不可读提示、批量导入）。
-9. 低优先级：存储升级评估（JSON -> SwiftData/CoreData）及迁移策略。
-10. 低优先级：恢复自动化测试（在可用 Xcode/XCTest 环境下重新启用 `testTarget` 与基础单测）。
-
-## 协作规则（给后续 Agent）
-1. 每次改动先说明目的，再最小化修改范围。
-2. 先实现协议，再补具体 Provider，避免强耦合。
-3. 新增依赖前必须说明必要性与替代方案。
-4. 所有异步请求必须处理超时、取消和错误态。
-5. 关键逻辑必须配单元测试（至少覆盖成功和失败路径）。
+## Collaboration Rules
+1. Keep changes scoped and explicit.
+2. Prefer protocol-first abstractions.
+3. Justify new dependencies before adding.
+4. Handle timeout/cancel/error for all async paths.
+5. Add/restore tests when test environment is available.

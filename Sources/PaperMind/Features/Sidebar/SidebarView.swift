@@ -11,6 +11,20 @@ struct SidebarView: View {
                 Spacer()
             }
 
+            HStack {
+                Text("思考模式")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Picker("思考模式", selection: $viewModel.thinkingMode) {
+                    ForEach(ThinkingMode.allCases) { mode in
+                        Text(mode.rawValue).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 170)
+            }
+
             paperReadStatus
 
             if !viewModel.selectedTextPreview.isEmpty {
@@ -23,23 +37,14 @@ struct SidebarView: View {
 
                         HStack {
                             Button("解释选区") {
-                                viewModel.chatMode = .explain
                                 Task { await viewModel.askAIUsingSelection() }
                             }
                             .disabled(viewModel.currentSelection == nil)
 
-                            Button("总结选区") {
-                                viewModel.chatMode = .summarize
-                                Task { await viewModel.askAIUsingSelection() }
+                            Button("解释公式") {
+                                Task { await viewModel.explainFormulaUsingSelection() }
                             }
                             .disabled(viewModel.currentSelection == nil)
-
-                            if viewModel.isMathSelection {
-                                Button("解释公式") {
-                                    Task { await viewModel.explainFormulaUsingSelection() }
-                                }
-                                .disabled(viewModel.currentSelection == nil)
-                            }
                         }
                         .font(.caption)
                     }
@@ -74,4 +79,5 @@ struct SidebarView: View {
                 .foregroundStyle(.orange)
         }
     }
+
 }
