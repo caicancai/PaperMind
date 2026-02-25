@@ -6,6 +6,23 @@ protocol TranslationService {
 
 protocol LLMService {
     func chat(messages: [ChatMessage], context: PaperContext?) async throws -> String
+    func chatStream(
+        messages: [ChatMessage],
+        context: PaperContext?,
+        onDelta: @escaping @Sendable (String) -> Void
+    ) async throws -> String
+}
+
+extension LLMService {
+    func chatStream(
+        messages: [ChatMessage],
+        context: PaperContext?,
+        onDelta: @escaping @Sendable (String) -> Void
+    ) async throws -> String {
+        let full = try await chat(messages: messages, context: context)
+        onDelta(full)
+        return full
+    }
 }
 
 protocol PaperContextBuilderService {

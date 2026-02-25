@@ -21,6 +21,7 @@ final class AppViewModel: ObservableObject {
     @Published var chatMessages: [ChatMessage] = []
     @Published var chatInput: String = ""
     @Published var chatState: RequestState = .idle
+    @Published var streamingAssistantMessageID: UUID?
 
     @Published var notes: [Note] = []
     @Published var activeThreadID: UUID?
@@ -36,6 +37,7 @@ final class AppViewModel: ObservableObject {
     private let dependencies: AppDependencies
     private var autoTranslateTask: Task<Void, Never>?
     private var paperKnowledgeCache: [UUID: PaperKnowledge] = [:]
+    private var translationCache: [String: String] = [:]
 
     init(dependencies: AppDependencies) {
         self.dependencies = dependencies
@@ -124,8 +126,18 @@ final class AppViewModel: ObservableObject {
         autoTranslateTask?.cancel()
         guard currentSelection != nil else { return }
 
+        if let selection = currentSelection,
+           let cached = translationCache[translationCacheKey(for: selection.selectedText, target: "zh")] {
+            translationResult = cached
+            translationState = .success
+            return
+        }
+
+        translationResult = ""
+        translationState = .loading
+
         autoTranslateTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 220_000_000)
+            try? await Task.sleep(nanoseconds: 120_000_000)
             guard !Task.isCancelled else { return }
             await self?.translateSelection()
         }
@@ -155,11 +167,26 @@ final class AppViewModel: ObservableObject {
         currentSelectionAnchor = anchorRect.map(NoteAnchorRect.init(rect:))
         selectedTextPreview = trimmed
         isMathSelection = FormulaDetector.isLikelyFormula(trimmed)
+
+        if let cached = translationCache[translationCacheKey(for: trimmed, target: "zh")] {
+            translationResult = cached
+            translationState = .success
+        } else {
+            translationResult = ""
+            translationState = .idle
+        }
     }
 
     func translateSelection(target: String = "zh") async {
         guard let selection = currentSelection else {
             translationState = .failure("请先选择文本")
+            return
+        }
+
+        let cacheKey = translationCacheKey(for: selection.selectedText, target: target)
+        if let cached = translationCache[cacheKey] {
+            translationResult = cached
+            translationState = .success
             return
         }
 
@@ -171,6 +198,7 @@ final class AppViewModel: ObservableObject {
                 target: target
             )
             translationResult = result
+            translationCache[cacheKey] = result
             translationState = .success
         } catch is CancellationError {
             translationState = .idle
@@ -179,15 +207,19 @@ final class AppViewModel: ObservableObject {
         }
     }
 
-    func askAIUsingSelection() async {
+    func askAIUsingSelection(question: String? = nil) async {
         guard let selection = currentSelection else {
             chatState = .failure("请先选择论文片段")
             return
         }
 
+        let input = (question ?? chatInput).trimmingCharacters(in: .whitespacesAndNewlines)
+        let finalInput = input.isEmpty
+            ? "请结合我选中的内容解释关键点，并说明它在论文中的作用。"
+            : input
+
         chatMode = .explain
-        chatInput = "Explain: 请解释这段内容的核心含义，并说明它在论文中的作用。"
-        await sendChatMessage(selection: selection)
+        await sendChatMessage(input: finalInput, selection: selection)
     }
 
     func explainFormulaUsingSelection() async {
@@ -197,7 +229,7 @@ final class AppViewModel: ObservableObject {
         }
 
         chatMode = .explain
-        chatInput = """
+        let prompt = """
         Explain Formula:
         请用中文解释下面这个数学公式，并严格按以下结构输出：
         1) 一句话直觉
@@ -208,11 +240,16 @@ final class AppViewModel: ObservableObject {
         公式：
         \(selection.selectedText)
         """
-        await sendChatMessage(selection: selection)
+        await sendChatMessage(input: prompt, selection: selection)
     }
 
-    func sendChatFromInput() async {
-        await sendChatMessage(selection: currentSelection)
+    func sendChatFromInput(text: String? = nil) async {
+        let input = (text ?? chatInput).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !input.isEmpty else {
+            chatState = .failure("请输入问题")
+            return
+        }
+        await sendChatMessage(input: input, selection: currentSelection)
     }
 
     func createCommentThreadFromDraft() async {
@@ -372,13 +409,7 @@ final class AppViewModel: ObservableObject {
         }
     }
 
-    private func sendChatMessage(selection: TextSelection?) async {
-        let input = chatInput.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !input.isEmpty else {
-            chatState = .failure("请输入问题")
-            return
-        }
-
+    private func sendChatMessage(input: String, selection: TextSelection?) async {
         let userMessage = ChatMessage(
             id: UUID(),
             sessionID: chatSessionID,
@@ -387,7 +418,20 @@ final class AppViewModel: ObservableObject {
             createdAt: Date()
         )
         chatMessages.append(userMessage)
+        let requestMessages = chatMessages
+
+        let assistantMessageID = UUID()
+        chatMessages.append(
+            ChatMessage(
+                id: assistantMessageID,
+                sessionID: chatSessionID,
+                role: .assistant,
+                content: "",
+                createdAt: Date()
+            )
+        )
         chatInput = ""
+        streamingAssistantMessageID = assistantMessageID
         chatState = .loading
 
         do {
@@ -402,21 +446,45 @@ final class AppViewModel: ObservableObject {
                 }
             }
 
-            let response = try await dependencies.llmService.chat(
-                messages: chatMessages,
+            let response = try await dependencies.llmService.chatStream(
+                messages: requestMessages,
                 context: buildContext(selection: selection)
-            )
+            ) { [weak self] delta in
+                Task { @MainActor [weak self] in
+                    guard let self,
+                          let index = self.chatMessages.firstIndex(where: { $0.id == assistantMessageID }) else { return }
+                    self.chatMessages[index].content += delta
+                }
+            }
 
-            let assistantMessage = ChatMessage(
-                id: UUID(),
-                sessionID: chatSessionID,
-                role: .assistant,
-                content: response,
-                createdAt: Date()
-            )
-            chatMessages.append(assistantMessage)
+            if let index = chatMessages.firstIndex(where: { $0.id == assistantMessageID }) {
+                chatMessages[index].content = response
+            } else {
+                chatMessages.append(
+                    ChatMessage(
+                        id: assistantMessageID,
+                        sessionID: chatSessionID,
+                        role: .assistant,
+                        content: response,
+                        createdAt: Date()
+                    )
+                )
+            }
+            if let index = chatMessages.firstIndex(where: { $0.id == assistantMessageID }),
+               chatMessages[index].content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                chatMessages.remove(at: index)
+                streamingAssistantMessageID = nil
+                throw PMError.network("AI 未返回有效内容")
+            }
+
+            streamingAssistantMessageID = nil
             chatState = .success
         } catch {
+            if let index = chatMessages.firstIndex(where: { $0.id == assistantMessageID }),
+               chatMessages[index].content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                chatMessages.remove(at: index)
+            }
+            streamingAssistantMessageID = nil
             chatState = .failure(error.localizedDescription)
         }
     }
@@ -454,5 +522,9 @@ final class AppViewModel: ObservableObject {
     var activeThread: Note? {
         guard let activeThreadID else { return nil }
         return notes.first(where: { $0.id == activeThreadID })
+    }
+
+    private func translationCacheKey(for text: String, target: String) -> String {
+        "\(target)|\(text)"
     }
 }
