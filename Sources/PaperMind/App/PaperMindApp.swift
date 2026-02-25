@@ -18,5 +18,16 @@ struct PaperMindApp: App {
                 }
         }
         .windowStyle(.hiddenTitleBar)
+        .commands {
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings...") {
+                    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                }
+                .keyboardShortcut(",", modifiers: [.command])
+            }
+        }
+        Settings {
+            SettingsWindowView(viewModel: viewModel)
+        }
     }
 }

@@ -17,6 +17,8 @@
 - 翻译
   - 选区自动翻译
   - 默认使用 Google 翻译
+  - 悬浮卡片内可快速切换目标语言（`zh/en/ja/ko`）
+  - 长翻译支持展开/收起与自动滚动
 - AI 对话
   - 右侧 AI 讨论栏
   - 可基于当前选区 `Explain`
@@ -24,7 +26,8 @@
   - 支持“解释公式”快捷入口（检测到公式时显示）
   - 支持 `OpenAI`、`DeepSeek`、`Kimi` 三家厂商
   - 首次回答前会先本地预读论文并缓存上下文
-  - AI 回答按 Markdown 渲染显示
+  - AI 回答支持流式输出
+  - 流式结束后按 Markdown 渲染显示
 
 ## 环境要求
 
@@ -41,7 +44,9 @@ open .build/debug/PaperMind
 
 ## 配置 AI Provider
 
-当前通过环境变量选择厂商。
+现在可直接在应用内 `AI 设置` 中切换 Provider/Model，API Key 会存到本地配置文件。
+可通过侧栏齿轮按钮或 `Cmd + ,` 打开设置。
+环境变量仍可作为兜底/初始化来源。
 
 ### 厂商切换
 
@@ -109,7 +114,7 @@ open .build/debug/PaperMind
 
 - 当前测试目标未启用（当前仅维护 `swift build` 流程）
 - 笔记/评论功能已在 UI 层临时下线
-- API Key 目前从环境变量或 `.env.local` 读取（尚未接入 Keychain）
+- API Key 当前保存在本地配置（未使用 Keychain 加密）
 
 ## License
 
@@ -117,9 +122,8 @@ MIT，详见 [LICENSE](./LICENSE)。
 
 ## 路线图（简版）
 
-- Provider/模型切换 UI（而非仅环境变量）
 - 更稳定的 PDF 上下文抽取（提升问答质量）
-- Keychain 管理 API Key
+- 对话历史跨重启持久化
 
 ## 说明
 

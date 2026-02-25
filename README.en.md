@@ -17,6 +17,8 @@ A Swift/macOS paper-reading assistant focused on three core workflows:
 - Translation
   - Auto-translate selected text
   - Google Translate by default
+  - Target language quick switch in floating popup (`zh/en/ja/ko`)
+  - Long translation supports expand/collapse and auto-scroll
 - AI Chat
   - Dedicated AI discussion sidebar
   - Ask based on current selection with `Explain`
@@ -24,7 +26,8 @@ A Swift/macOS paper-reading assistant focused on three core workflows:
   - Formula explanation quick action when formula-like text is detected
   - Supports `OpenAI`, `DeepSeek`, and `Kimi` providers
   - Reads and caches full-paper local context before first answer
-  - Assistant messages are rendered as Markdown
+  - Assistant messages are streamed token-by-token
+  - Assistant messages are rendered as Markdown (post-stream)
 
 ## Requirements
 
@@ -41,7 +44,9 @@ open .build/debug/PaperMind
 
 ## Configure AI Provider
 
-Provider selection is environment-variable based.
+Provider/model can now be configured directly in the app (`AI Settings`), and API keys are stored in local app settings.
+You can open settings from the sidebar gear button or `Cmd + ,`.
+Environment variables are still supported as fallback/bootstrap.
 
 ### Provider switch
 
@@ -109,7 +114,7 @@ If provider or key is unavailable, the app reports `AI not connected` style erro
 
 - Test target is currently disabled (project currently maintained with `swift build` flow)
 - Notes/comments are temporarily disabled in UI
-- API keys are currently read from environment variables / `.env.local` (Keychain integration pending)
+- API keys are stored locally in app settings (not encrypted by Keychain)
 
 ## License
 
@@ -117,9 +122,8 @@ MIT. See [LICENSE](./LICENSE).
 
 ## Roadmap (Short)
 
-- Provider/model switcher UI (instead of env vars only)
 - More robust PDF context extraction (better QA quality)
-- Keychain-based API key management
+- Persist chat history across app restarts
 
 ## Notes
 

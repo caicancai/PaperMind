@@ -3,6 +3,7 @@ import SwiftUI
 struct ReaderPaneView: View {
     @ObservedObject var viewModel: AppViewModel
     @State private var selectionRect: CGRect?
+    @State private var showFullTranslation: Bool = false
 
     var body: some View {
         VStack(spacing: 10) {
@@ -48,6 +49,9 @@ struct ReaderPaneView: View {
             }
         }
         .padding(4)
+        .onChange(of: viewModel.selectedTextPreview) { _ in
+            showFullTranslation = false
+        }
     }
 
     private var popupWidth: CGFloat {
@@ -83,6 +87,28 @@ struct ReaderPaneView: View {
                 .buttonStyle(.plain)
             }
 
+            HStack(spacing: 6) {
+                Text("目标语言")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+
+                Picker("目标语言", selection: Binding(
+                    get: { viewModel.translationTargetLanguage },
+                    set: { newValue in
+                        Task { await viewModel.updateTranslationTargetLanguage(newValue) }
+                    }
+                )) {
+                    Text("中文").tag("zh")
+                    Text("English").tag("en")
+                    Text("日本語").tag("ja")
+                    Text("한국어").tag("ko")
+                }
+                .pickerStyle(.menu)
+                .font(.caption)
+
+                Spacer()
+            }
+
             if !viewModel.selectedTextPreview.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(viewModel.selectedTextPreview)
@@ -112,10 +138,7 @@ struct ReaderPaneView: View {
                     }
                     .font(.callout)
                 case .success:
-                    Text(viewModel.translationResult)
-                        .font(.callout)
-                        .textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
+                    translationResultView
                 case .failure(let message):
                     Text(message)
                         .font(.callout)
@@ -147,6 +170,63 @@ struct ReaderPaneView: View {
                 .stroke(.gray.opacity(0.25), lineWidth: 1)
         )
         .shadow(color: .black.opacity(0.12), radius: 8, y: 4)
+    }
+
+    @ViewBuilder
+    private var translationResultView: some View {
+        let paragraphs = normalizedTranslationParagraphs(viewModel.translationResult)
+        let isLong = viewModel.translationResult.count > 280 || paragraphs.count > 3
+        let visibleParagraphs = showFullTranslation ? paragraphs : Array(paragraphs.prefix(3))
+
+        VStack(alignment: .leading, spacing: 6) {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(Array(visibleParagraphs.enumerated()), id: \.offset) { index, paragraph in
+                            Text(paragraph)
+                                .font(.callout)
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 6)
+                                .background(Color.white.opacity(0.45), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                                .id(index)
+                        }
+                    }
+                }
+                .onChange(of: viewModel.translationResult) { _ in
+                    guard let last = visibleParagraphs.indices.last else { return }
+                    withAnimation(.easeOut(duration: 0.16)) {
+                        proxy.scrollTo(last, anchor: .bottom)
+                    }
+                }
+                .onChange(of: showFullTranslation) { _ in
+                    guard let last = visibleParagraphs.indices.last else { return }
+                    withAnimation(.easeOut(duration: 0.16)) {
+                        proxy.scrollTo(last, anchor: .bottom)
+                    }
+                }
+            }
+            .frame(maxHeight: showFullTranslation ? 180 : 120)
+
+            if isLong {
+                Button(showFullTranslation ? "收起" : "展开全文") {
+                    showFullTranslation.toggle()
+                }
+                .buttonStyle(.plain)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func normalizedTranslationParagraphs(_ text: String) -> [String] {
+        let normalized = text.replacingOccurrences(of: "\r\n", with: "\n")
+        let paragraphs = normalized
+            .components(separatedBy: "\n")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        return paragraphs.isEmpty ? [normalized] : paragraphs
     }
 
     private func popupPosition(in size: CGSize, popupWidth: CGFloat, popupHeight: CGFloat) -> CGPoint {

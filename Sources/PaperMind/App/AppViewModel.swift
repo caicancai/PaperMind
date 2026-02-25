@@ -13,6 +13,7 @@ final class AppViewModel: ObservableObject {
 
     @Published var translationState: RequestState = .idle
     @Published var translationResult: String = ""
+    @Published var translationTargetLanguage: String = "zh"
     @Published var paperContextState: RequestState = .idle
 
     @Published var chatSessionID: UUID = UUID()
@@ -22,6 +23,14 @@ final class AppViewModel: ObservableObject {
     @Published var chatInput: String = ""
     @Published var chatState: RequestState = .idle
     @Published var streamingAssistantMessageID: UUID?
+    @Published var aiProvider: AIProvider = .auto
+    @Published var openAIModel: String = AISettings.default.openAIModel
+    @Published var deepSeekModel: String = AISettings.default.deepSeekModel
+    @Published var kimiModel: String = AISettings.default.kimiModel
+    @Published var openAIAPIKeyDraft: String = ""
+    @Published var deepSeekAPIKeyDraft: String = ""
+    @Published var kimiAPIKeyDraft: String = ""
+    @Published var aiConfigState: RequestState = .idle
 
     @Published var notes: [Note] = []
     @Published var activeThreadID: UUID?
@@ -35,12 +44,15 @@ final class AppViewModel: ObservableObject {
     @Published var noteState: RequestState = .idle
 
     private let dependencies: AppDependencies
+    private var llmService: LLMService
     private var autoTranslateTask: Task<Void, Never>?
     private var paperKnowledgeCache: [UUID: PaperKnowledge] = [:]
     private var translationCache: [String: String] = [:]
 
     init(dependencies: AppDependencies) {
         self.dependencies = dependencies
+        self.llmService = dependencies.llmService
+        loadAIConfiguration()
     }
 
     var selectedPaper: Paper? {
@@ -49,6 +61,19 @@ final class AppViewModel: ObservableObject {
 
     func bootstrap() async {
         await refreshPapers()
+    }
+
+    func saveAIConfiguration() {
+        aiConfigState = .loading
+        let settings = normalizedAISettings()
+
+        do {
+            try dependencies.saveAISettings(settings)
+            llmService = dependencies.makeLLMService(settings: settings)
+            aiConfigState = .success
+        } catch {
+            aiConfigState = .failure(error.localizedDescription)
+        }
     }
 
     func refreshPapers() async {
@@ -127,7 +152,7 @@ final class AppViewModel: ObservableObject {
         guard currentSelection != nil else { return }
 
         if let selection = currentSelection,
-           let cached = translationCache[translationCacheKey(for: selection.selectedText, target: "zh")] {
+           let cached = translationCache[translationCacheKey(for: selection.selectedText, target: translationTargetLanguage)] {
             translationResult = cached
             translationState = .success
             return
@@ -168,7 +193,7 @@ final class AppViewModel: ObservableObject {
         selectedTextPreview = trimmed
         isMathSelection = FormulaDetector.isLikelyFormula(trimmed)
 
-        if let cached = translationCache[translationCacheKey(for: trimmed, target: "zh")] {
+        if let cached = translationCache[translationCacheKey(for: trimmed, target: translationTargetLanguage)] {
             translationResult = cached
             translationState = .success
         } else {
@@ -177,9 +202,15 @@ final class AppViewModel: ObservableObject {
         }
     }
 
-    func translateSelection(target: String = "zh") async {
+    func translateSelection(target: String? = nil) async {
         guard let selection = currentSelection else {
             translationState = .failure("请先选择文本")
+            return
+        }
+
+        let target = (target ?? translationTargetLanguage).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !target.isEmpty else {
+            translationState = .failure("目标语言不能为空")
             return
         }
 
@@ -205,6 +236,14 @@ final class AppViewModel: ObservableObject {
         } catch {
             translationState = .failure(error.localizedDescription)
         }
+    }
+
+    func updateTranslationTargetLanguage(_ target: String) async {
+        let trimmed = target.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        translationTargetLanguage = trimmed
+        guard currentSelection != nil else { return }
+        await translateSelection(target: trimmed)
     }
 
     func askAIUsingSelection(question: String? = nil) async {
@@ -446,7 +485,7 @@ final class AppViewModel: ObservableObject {
                 }
             }
 
-            let response = try await dependencies.llmService.chatStream(
+            let response = try await llmService.chatStream(
                 messages: requestMessages,
                 context: buildContext(selection: selection)
             ) { [weak self] delta in
@@ -526,5 +565,40 @@ final class AppViewModel: ObservableObject {
 
     private func translationCacheKey(for text: String, target: String) -> String {
         "\(target)|\(text)"
+    }
+
+    private func loadAIConfiguration() {
+        let settings = dependencies.loadAISettings()
+        aiProvider = settings.provider
+        openAIModel = settings.openAIModel
+        deepSeekModel = settings.deepSeekModel
+        kimiModel = settings.kimiModel
+
+        openAIAPIKeyDraft = settings.openAIAPIKey
+        deepSeekAPIKeyDraft = settings.deepSeekAPIKey
+        kimiAPIKeyDraft = settings.kimiAPIKey
+
+        llmService = dependencies.makeLLMService(settings: settings)
+    }
+
+    private func normalizedAISettings() -> AISettings {
+        AISettings(
+            provider: aiProvider,
+            openAIModel: normalizeModel(openAIModel, fallback: AISettings.default.openAIModel),
+            deepSeekModel: normalizeModel(deepSeekModel, fallback: AISettings.default.deepSeekModel),
+            kimiModel: normalizeModel(kimiModel, fallback: AISettings.default.kimiModel),
+            openAIAPIKey: normalizeAPIKey(openAIAPIKeyDraft),
+            deepSeekAPIKey: normalizeAPIKey(deepSeekAPIKeyDraft),
+            kimiAPIKey: normalizeAPIKey(kimiAPIKeyDraft)
+        )
+    }
+
+    private func normalizeModel(_ value: String, fallback: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? fallback : trimmed
+    }
+
+    private func normalizeAPIKey(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

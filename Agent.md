@@ -118,18 +118,22 @@ protocol PaperRepository {
 ## Security & Privacy
 1. Keep data local by default.
 2. Do not upload full paper by default; send necessary context only.
-3. API keys should move to Keychain in future (currently env/.env.local).
+3. API keys are currently persisted in local app settings (not Keychain).
 
-## Current Status (2026-02-24)
+## Current Status (2026-02-25)
 1. Implemented: three-column UI, PDF reading, selection events, translation popup, AI sidebar.
 2. Implemented: Google translation by default.
 3. Implemented: LLM providers OpenAI / DeepSeek / Kimi.
 4. Implemented: strict AI mode (no silent fallback to Mock when provider is missing/unavailable).
 5. Implemented: paper context pre-read and cache before/around answering.
-6. Implemented: assistant responses rendered as Markdown.
+6. Implemented: assistant responses stream token-by-token, then render as Markdown.
 7. Implemented: Thinking mode selector (`Fast` default, `Deep` optional).
-8. Disabled in UI: notes/comments flow (kept out of main workflow for now).
-9. Tests are currently not enabled in package targets.
+8. Implemented: AI settings UI with provider/model/API key editing (sidebar popover + Settings window).
+9. Implemented: settings entry via `Cmd + ,`.
+10. Implemented: translation popup target-language switch (`zh/en/ja/ko`) with per-language cache.
+11. Implemented: translation result card with expand/collapse and auto-scroll for long content.
+12. Disabled in UI: notes/comments flow (kept out of main workflow for now).
+13. Tests are currently not enabled in package targets.
 
 ## Key Interaction Decisions
 1. Reading-first layout and behavior take priority.
@@ -146,9 +150,9 @@ protocol PaperRepository {
 ## Next Priorities
 1. Chat persistence by paper/session (restore history after restart).
 2. Comments/notes feature redesign and reintroduction.
-3. Model/provider switch UI (instead of env-only control).
-4. Keychain integration for API keys.
-5. Better context extraction quality and prompt control.
+3. Better context extraction quality and prompt control.
+4. Optional encrypted local secret store (if passwordless UX remains a requirement).
+5. Translation popup editing mode (edit source text before re-translate).
 
 ## Collaboration Rules
 1. Keep changes scoped and explicit.

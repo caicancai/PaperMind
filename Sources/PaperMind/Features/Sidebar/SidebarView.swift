@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SidebarView: View {
     @ObservedObject var viewModel: AppViewModel
+    @State private var showAISettingsPopover = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -10,6 +11,13 @@ struct SidebarView: View {
                     Label("AI 讨论", systemImage: "bubble.left.and.bubble.right.fill")
                         .font(.system(.title3, design: .rounded, weight: .semibold))
                     Spacer()
+                    Button {
+                        showAISettingsPopover = true
+                    } label: {
+                        Image(systemName: "gearshape.fill")
+                    }
+                    .buttonStyle(.bordered)
+                    .help("打开 AI 设置")
                 }
 
                 HStack {
@@ -64,6 +72,23 @@ struct SidebarView: View {
             ChatPanelView(viewModel: viewModel)
         }
         .padding(8)
+        .popover(isPresented: $showAISettingsPopover, arrowEdge: .top) {
+            aiSettingsPopover
+        }
+    }
+
+    private var aiSettingsPopover: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("AI 设置")
+                    .font(.headline)
+                Spacer()
+            }
+
+            AISettingsFormView(viewModel: viewModel)
+        }
+        .padding(16)
+        .frame(width: 520)
     }
 
     @ViewBuilder
