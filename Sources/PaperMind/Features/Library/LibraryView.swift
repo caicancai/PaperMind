@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 struct LibraryView: View {
     @ObservedObject var viewModel: AppViewModel
     @State private var isImporterPresented = false
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(spacing: 14) {
@@ -23,7 +24,7 @@ struct LibraryView: View {
                     .foregroundStyle(.secondary)
             }
             .padding(12)
-            .background(Color.white.opacity(0.64), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .background(headerFill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
 
             List(viewModel.papers, selection: Binding(
                 get: { viewModel.selectedPaperID },
@@ -39,7 +40,7 @@ struct LibraryView: View {
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
-            .background(Color.white.opacity(0.42), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .background(listFill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
 
             HStack {
                 Button("刷新") {
@@ -87,7 +88,7 @@ struct LibraryView: View {
         let selected = viewModel.selectedPaperID == paper.id
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: selected ? "doc.richtext.fill" : "doc.plaintext")
-                .foregroundStyle(selected ? Color(red: 0.14, green: 0.38, blue: 0.88) : .secondary)
+                .foregroundStyle(selected ? selectedIconColor : .secondary)
                 .font(.callout)
                 .padding(.top, 2)
 
@@ -105,7 +106,31 @@ struct LibraryView: View {
         .padding(10)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(selected ? Color(red: 0.89, green: 0.94, blue: 1.00) : Color.white.opacity(0.5))
+                .fill(selected ? selectedRowFill : rowFill)
         )
+    }
+
+    private var headerFill: Color {
+        colorScheme == .dark ? Color.black.opacity(0.28) : Color.white.opacity(0.64)
+    }
+
+    private var listFill: Color {
+        colorScheme == .dark ? Color.black.opacity(0.22) : Color.white.opacity(0.42)
+    }
+
+    private var rowFill: Color {
+        colorScheme == .dark ? Color.white.opacity(0.06) : Color.white.opacity(0.50)
+    }
+
+    private var selectedRowFill: Color {
+        colorScheme == .dark
+        ? Color(red: 0.21, green: 0.28, blue: 0.38)
+        : Color(red: 0.89, green: 0.94, blue: 1.00)
+    }
+
+    private var selectedIconColor: Color {
+        colorScheme == .dark
+        ? Color(red: 0.54, green: 0.72, blue: 0.96)
+        : Color(red: 0.14, green: 0.38, blue: 0.88)
     }
 }

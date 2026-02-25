@@ -4,6 +4,7 @@ import AppKit
 struct ChatPanelView: View {
     @ObservedObject var viewModel: AppViewModel
     @State private var draftInput: String = ""
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -18,7 +19,7 @@ struct ChatPanelView: View {
                             .foregroundStyle(.secondary)
                             .padding(12)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color.white.opacity(0.6), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .background(panelFill, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                     } else {
                         ForEach(viewModel.chatMessages) { message in
                             VStack(alignment: .leading, spacing: 6) {
@@ -48,8 +49,10 @@ struct ChatPanelView: View {
                             .padding(10)
                             .background(
                                 message.role == .assistant
-                                ? Color.white.opacity(0.70)
-                                : Color(red: 0.88, green: 0.94, blue: 1.00)
+                                ? panelFill
+                                : (colorScheme == .dark
+                                   ? Color(red: 0.19, green: 0.26, blue: 0.37)
+                                   : Color(red: 0.88, green: 0.94, blue: 1.00))
                             )
                             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                             .overlay(
@@ -64,7 +67,7 @@ struct ChatPanelView: View {
             }
             .frame(minHeight: 260)
             .padding(10)
-            .background(Color.white.opacity(0.42), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .background(sectionFill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
 
             VStack(alignment: .leading, spacing: 8) {
                 Text("输入问题")
@@ -76,20 +79,25 @@ struct ChatPanelView: View {
                         text: $draftInput,
                         onSubmit: sendCurrentInput
                     )
-                        .frame(minHeight: 80, maxHeight: 140)
-                        .padding(6)
-                        .background(Color.white.opacity(0.70), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10)
-                                .stroke(Color(red: 0.79, green: 0.84, blue: 0.95), lineWidth: 1)
+                        .frame(minHeight: 86, maxHeight: 148)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .background(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(inputFill)
                         )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(Color.black.opacity(0.08), lineWidth: 1)
+                        )
+                        .shadow(color: .black.opacity(0.04), radius: 6, y: 2)
 
                     if draftInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         Text("输入你的问题，`Enter` 发送，`Shift + Enter` 换行")
-                            .font(.callout)
+                            .font(.footnote)
                             .foregroundStyle(.secondary)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 14)
+                            .padding(.horizontal, 18)
+                            .padding(.vertical, 15)
                             .allowsHitTesting(false)
                     }
                 }
@@ -102,15 +110,16 @@ struct ChatPanelView: View {
                     Button {
                         sendCurrentInput()
                     } label: {
-                        Label("发送", systemImage: "arrow.up.circle.fill")
+                        Label("发送", systemImage: "arrow.up")
                     }
                     .buttonStyle(.borderedProminent)
-                    .tint(Color(red: 0.18, green: 0.46, blue: 0.92))
+                    .controlSize(.regular)
+                    .tint(Color(red: 0.15, green: 0.43, blue: 0.88))
                     .disabled(viewModel.chatState == .loading || draftInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
             .padding(10)
-            .background(Color.white.opacity(0.50), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .background(sectionFill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
 
             statusView
         }
@@ -140,22 +149,34 @@ struct ChatPanelView: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .background(Color.white.opacity(0.6), in: Capsule())
+            .background(panelFill, in: Capsule())
         case .success:
             Text("回答完成")
                 .font(.caption)
                 .foregroundStyle(Color(red: 0.12, green: 0.55, blue: 0.30))
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
-                .background(Color.white.opacity(0.6), in: Capsule())
+                .background(panelFill, in: Capsule())
         case .failure(let message):
             Text(message)
                 .font(.caption)
                 .foregroundStyle(.red)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
-                .background(Color.white.opacity(0.6), in: Capsule())
+                .background(panelFill, in: Capsule())
         }
+    }
+
+    private var sectionFill: Color {
+        colorScheme == .dark ? Color.black.opacity(0.24) : Color.white.opacity(0.56)
+    }
+
+    private var panelFill: Color {
+        colorScheme == .dark ? Color.black.opacity(0.30) : Color.white.opacity(0.70)
+    }
+
+    private var inputFill: Color {
+        colorScheme == .dark ? Color.black.opacity(0.34) : Color.white.opacity(0.82)
     }
 }
 
@@ -167,7 +188,7 @@ private struct ChatInputTextView: NSViewRepresentable {
         let scrollView = NSTextView.scrollableTextView()
         scrollView.drawsBackground = false
         scrollView.borderType = .noBorder
-        scrollView.hasVerticalScroller = true
+        scrollView.hasVerticalScroller = false
         scrollView.autohidesScrollers = true
 
         guard let textView = scrollView.documentView as? NSTextView else {
@@ -178,12 +199,16 @@ private struct ChatInputTextView: NSViewRepresentable {
         textView.isRichText = false
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
+        textView.isAutomaticSpellingCorrectionEnabled = false
         textView.drawsBackground = false
-        textView.font = .systemFont(ofSize: NSFont.systemFontSize)
-        textView.textContainerInset = NSSize(width: 6, height: 8)
+        textView.font = preferredChatInputFont()
+        textView.textContainerInset = NSSize(width: 8, height: 10)
         textView.string = text
 
         context.coordinator.textView = textView
+        DispatchQueue.main.async {
+            textView.window?.makeFirstResponder(textView)
+        }
         return scrollView
     }
 
@@ -221,9 +246,28 @@ private struct ChatInputTextView: NSViewRepresentable {
                 return false
             }
 
+            if textView.hasMarkedText() {
+                return false
+            }
+
+            let trimmed = textView.string.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else {
+                return true
+            }
+
             parent.onSubmit()
+            textView.window?.makeFirstResponder(textView)
             return true
         }
+    }
+
+    private func preferredChatInputFont() -> NSFont {
+        let size: CGFloat = 14
+        let base = NSFont.systemFont(ofSize: size, weight: .regular)
+        if let descriptor = base.fontDescriptor.withDesign(.rounded) {
+            return NSFont(descriptor: descriptor, size: size) ?? base
+        }
+        return base
     }
 }
 

@@ -114,6 +114,7 @@ struct AppDependencies {
         let provider = AIProvider(rawValue: providerRaw) ?? .auto
         let settings = AISettings(
             provider: provider,
+            theme: .light,
             openAIModel: cleanModel(nil, env["OPENAI_MODEL"], fallback: AISettings.default.openAIModel),
             deepSeekModel: cleanModel(nil, env["DEEPSEEK_MODEL"], fallback: AISettings.default.deepSeekModel),
             kimiModel: cleanModel(nil, env["KIMI_MODEL"], fallback: AISettings.default.kimiModel),

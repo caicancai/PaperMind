@@ -6,10 +6,7 @@ struct RootView: View {
     var body: some View {
         ZStack {
             LinearGradient(
-                colors: [
-                    Color(red: 0.96, green: 0.98, blue: 1.00),
-                    Color(red: 0.96, green: 0.97, blue: 0.95)
-                ],
+                colors: backgroundGradientColors,
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
@@ -35,5 +32,28 @@ struct RootView: View {
             .padding(12)
         }
         .frame(minWidth: 1380, minHeight: 820)
+        .preferredColorScheme(preferredColorScheme)
+    }
+
+    private var preferredColorScheme: ColorScheme {
+        switch viewModel.appTheme {
+        case .light: return .light
+        case .dark: return .dark
+        }
+    }
+
+    private var backgroundGradientColors: [Color] {
+        switch viewModel.appTheme {
+        case .light:
+            return [
+                Color(red: 0.96, green: 0.98, blue: 1.00),
+                Color(red: 0.96, green: 0.97, blue: 0.95)
+            ]
+        case .dark:
+            return [
+                Color(red: 0.12, green: 0.13, blue: 0.15),
+                Color(red: 0.09, green: 0.10, blue: 0.12)
+            ]
+        }
     }
 }

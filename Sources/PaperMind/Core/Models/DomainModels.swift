@@ -206,8 +206,23 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+enum AppTheme: String, Codable, CaseIterable, Identifiable {
+    case light
+    case dark
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .light: return "Light"
+        case .dark: return "Dark"
+        }
+    }
+}
+
 struct AISettings: Codable, Equatable {
     var provider: AIProvider
+    var theme: AppTheme
     var openAIModel: String
     var deepSeekModel: String
     var kimiModel: String
@@ -217,6 +232,7 @@ struct AISettings: Codable, Equatable {
 
     static let `default` = AISettings(
         provider: .auto,
+        theme: .light,
         openAIModel: "gpt-4o-mini",
         deepSeekModel: "deepseek-chat",
         kimiModel: "moonshot-v1-8k",
@@ -227,6 +243,7 @@ struct AISettings: Codable, Equatable {
 
     private enum CodingKeys: String, CodingKey {
         case provider
+        case theme
         case openAIModel
         case deepSeekModel
         case kimiModel
@@ -237,6 +254,7 @@ struct AISettings: Codable, Equatable {
 
     init(
         provider: AIProvider,
+        theme: AppTheme,
         openAIModel: String,
         deepSeekModel: String,
         kimiModel: String,
@@ -245,6 +263,7 @@ struct AISettings: Codable, Equatable {
         kimiAPIKey: String
     ) {
         self.provider = provider
+        self.theme = theme
         self.openAIModel = openAIModel
         self.deepSeekModel = deepSeekModel
         self.kimiModel = kimiModel
@@ -256,6 +275,7 @@ struct AISettings: Codable, Equatable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         provider = try container.decodeIfPresent(AIProvider.self, forKey: .provider) ?? .auto
+        theme = try container.decodeIfPresent(AppTheme.self, forKey: .theme) ?? .light
         openAIModel = try container.decodeIfPresent(String.self, forKey: .openAIModel) ?? AISettings.default.openAIModel
         deepSeekModel = try container.decodeIfPresent(String.self, forKey: .deepSeekModel) ?? AISettings.default.deepSeekModel
         kimiModel = try container.decodeIfPresent(String.self, forKey: .kimiModel) ?? AISettings.default.kimiModel

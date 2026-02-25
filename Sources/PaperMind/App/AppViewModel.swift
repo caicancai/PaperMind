@@ -24,6 +24,7 @@ final class AppViewModel: ObservableObject {
     @Published var chatState: RequestState = .idle
     @Published var streamingAssistantMessageID: UUID?
     @Published var aiProvider: AIProvider = .auto
+    @Published var appTheme: AppTheme = .light
     @Published var openAIModel: String = AISettings.default.openAIModel
     @Published var deepSeekModel: String = AISettings.default.deepSeekModel
     @Published var kimiModel: String = AISettings.default.kimiModel
@@ -73,6 +74,19 @@ final class AppViewModel: ObservableObject {
             aiConfigState = .success
         } catch {
             aiConfigState = .failure(error.localizedDescription)
+        }
+    }
+
+    func applyTheme(_ theme: AppTheme) {
+        guard appTheme != theme else { return }
+        appTheme = theme
+
+        do {
+            var settings = dependencies.loadAISettings()
+            settings.theme = theme
+            try dependencies.saveAISettings(settings)
+        } catch {
+            // Keep UI responsive even if persistence fails.
         }
     }
 
@@ -570,6 +584,7 @@ final class AppViewModel: ObservableObject {
     private func loadAIConfiguration() {
         let settings = dependencies.loadAISettings()
         aiProvider = settings.provider
+        appTheme = settings.theme
         openAIModel = settings.openAIModel
         deepSeekModel = settings.deepSeekModel
         kimiModel = settings.kimiModel
@@ -584,6 +599,7 @@ final class AppViewModel: ObservableObject {
     private func normalizedAISettings() -> AISettings {
         AISettings(
             provider: aiProvider,
+            theme: appTheme,
             openAIModel: normalizeModel(openAIModel, fallback: AISettings.default.openAIModel),
             deepSeekModel: normalizeModel(deepSeekModel, fallback: AISettings.default.deepSeekModel),
             kimiModel: normalizeModel(kimiModel, fallback: AISettings.default.kimiModel),

@@ -3,6 +3,7 @@ import SwiftUI
 struct SidebarView: View {
     @ObservedObject var viewModel: AppViewModel
     @State private var showAISettingsPopover = false
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -11,6 +12,27 @@ struct SidebarView: View {
                     Label("AI 讨论", systemImage: "bubble.left.and.bubble.right.fill")
                         .font(.system(.title3, design: .rounded, weight: .semibold))
                     Spacer()
+                    HStack(spacing: 6) {
+                        Button {
+                            viewModel.applyTheme(.light)
+                        } label: {
+                            Image(systemName: "sun.max.fill")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(viewModel.appTheme == .light ? .orange : .gray)
+                        .opacity(viewModel.appTheme == .light ? 1.0 : 0.72)
+                        .help("切换到浅色模式")
+
+                        Button {
+                            viewModel.applyTheme(.dark)
+                        } label: {
+                            Image(systemName: "moon.fill")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(viewModel.appTheme == .dark ? .indigo : .gray)
+                        .opacity(viewModel.appTheme == .dark ? 1.0 : 0.72)
+                        .help("切换到深色模式")
+                    }
                     Button {
                         showAISettingsPopover = true
                     } label: {
@@ -35,7 +57,7 @@ struct SidebarView: View {
                 }
             }
             .padding(12)
-            .background(Color.white.opacity(0.64), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .background(sectionFill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
 
             paperReadStatus
 
@@ -60,13 +82,15 @@ struct SidebarView: View {
                             Task { await viewModel.explainFormulaUsingSelection() }
                         }
                         .buttonStyle(.borderedProminent)
-                        .tint(Color(red: 0.13, green: 0.49, blue: 0.73))
+                        .tint(colorScheme == .dark
+                              ? Color(red: 0.28, green: 0.48, blue: 0.70)
+                              : Color(red: 0.13, green: 0.49, blue: 0.73))
                         .disabled(viewModel.currentSelection == nil)
                     }
                     .font(.caption)
                 }
                 .padding(12)
-                .background(Color.white.opacity(0.62), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .background(sectionFill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
 
             ChatPanelView(viewModel: viewModel)
@@ -106,22 +130,30 @@ struct SidebarView: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .background(Color.white.opacity(0.55), in: Capsule())
+            .background(capsuleFill, in: Capsule())
         case .success:
             Text("论文上下文已加载")
                 .font(.caption2)
                 .foregroundStyle(Color(red: 0.12, green: 0.55, blue: 0.30))
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
-                .background(Color.white.opacity(0.55), in: Capsule())
+                .background(capsuleFill, in: Capsule())
         case .failure(let message):
             Text(message)
                 .font(.caption2)
                 .foregroundStyle(.orange)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
-                .background(Color.white.opacity(0.55), in: Capsule())
+                .background(capsuleFill, in: Capsule())
         }
+    }
+
+    private var sectionFill: Color {
+        colorScheme == .dark ? Color.black.opacity(0.26) : Color.white.opacity(0.64)
+    }
+
+    private var capsuleFill: Color {
+        colorScheme == .dark ? Color.black.opacity(0.34) : Color.white.opacity(0.55)
     }
 
 }
