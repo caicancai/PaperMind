@@ -105,6 +105,7 @@ protocol PaperRepository {
 1. Three-column layout: Library | Reader | AI Sidebar.
 2. Selection popup in reader should provide:
 - `Translate`
+- `Add Chat`
 - `Ask AI`
 - `Explain Formula`
 3. Selection popup should minimize context switching.
@@ -132,8 +133,13 @@ protocol PaperRepository {
 9. Implemented: settings entry via `Cmd + ,`.
 10. Implemented: translation popup target-language switch (`zh/en/ja/ko`) with per-language cache.
 11. Implemented: translation result card with expand/collapse and auto-scroll for long content.
-12. Disabled in UI: notes/comments flow (kept out of main workflow for now).
-13. Tests are currently not enabled in package targets.
+12. Implemented: selection-first `Add Chat` flow (inject selected text into chat draft, then user asks).
+13. Implemented: per-question provider selection in chat panel (`Auto/OpenAI/DeepSeek/Kimi`), providers without configured key are disabled.
+14. Implemented: DeepSeek endpoint fixed to `/v1/chat/completions`.
+15. Implemented: Kimi default model updated to `kimi-2.5`.
+16. Implemented: app now uses in-app settings only for provider/model/key (no `.env.local` fallback).
+17. Disabled in UI: notes/comments flow (kept out of main workflow for now).
+18. Tests are currently not enabled in package targets.
 
 ## Key Interaction Decisions
 1. Reading-first layout and behavior take priority.

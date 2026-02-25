@@ -21,10 +21,13 @@ A Swift/macOS paper-reading assistant focused on three core workflows:
   - Long translation supports expand/collapse and auto-scroll
 - AI Chat
   - Dedicated AI discussion sidebar
+  - Selection-first flow with `Add Chat` (inject selection into draft, then ask)
   - Ask based on current selection with `Explain`
   - Free-form questions without selection are supported
   - Formula explanation quick action when formula-like text is detected
   - Supports `OpenAI`, `DeepSeek`, and `Kimi` providers
+  - Per-question provider selection in chat panel (`Auto/OpenAI/DeepSeek/Kimi`)
+  - Providers without configured API keys are disabled for sending
   - Reads and caches full-paper local context before first answer
   - Assistant messages are streamed token-by-token
   - Assistant messages are rendered as Markdown (post-stream)
@@ -54,59 +57,9 @@ Media workflow: [`docs/README-media.md`](docs/README-media.md)
 
 Provider/model can now be configured directly in the app (`AI Settings`), and API keys are stored in local app settings.
 You can open settings from the sidebar gear button or `Cmd + ,`.
-Environment variables are still supported as fallback/bootstrap.
-
-### Provider switch
-
-- `AI_PROVIDER=openai`
-- `AI_PROVIDER=deepseek`
-- `AI_PROVIDER=kimi`
-- `AI_PROVIDER=auto` (default, tries OpenAI -> DeepSeek -> Kimi if corresponding keys exist)
-
-You can set vars in `.env.local` (project root). The app loads this file automatically.
-
-### Credentials and optional models
-
-- OpenAI
-  - `OPENAI_API_KEY`
-  - optional: `OPENAI_MODEL` (default: `gpt-4o-mini`)
-- DeepSeek
-  - `DEEPSEEK_API_KEY`
-  - optional: `DEEPSEEK_MODEL` (default: `deepseek-chat`)
-- Kimi (Moonshot)
-  - `KIMI_API_KEY`
-  - optional: `KIMI_MODEL` (default: `moonshot-v1-8k`)
-
-### Examples
-
-Use OpenAI:
-
-```bash
-export AI_PROVIDER=openai
-export OPENAI_API_KEY=your_openai_key
-cd PaperMind
-open .build/debug/PaperMind
-```
-
-Use DeepSeek:
-
-```bash
-export AI_PROVIDER=deepseek
-export DEEPSEEK_API_KEY=your_deepseek_key
-cd PaperMind
-open .build/debug/PaperMind
-```
-
-Use Kimi:
-
-```bash
-export AI_PROVIDER=kimi
-export KIMI_API_KEY=your_kimi_key
-cd PaperMind
-open .build/debug/PaperMind
-```
-
-If provider or key is unavailable, the app reports `AI not connected` style errors (no silent Mock fallback).
+Only in-app settings are used (no `.env.local` fallback).  
+Kimi default model is `kimi-2.5`.
+If provider or key is unavailable, the app reports configuration errors directly (no silent Mock fallback).
 
 ## Formula Explanation Flow
 

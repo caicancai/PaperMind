@@ -74,38 +74,40 @@ struct ChatPanelView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
+                providerSelector
+
                 ZStack(alignment: .topLeading) {
                     ChatInputTextView(
                         text: $draftInput,
                         onSubmit: sendCurrentInput
                     )
-                        .frame(minHeight: 86, maxHeight: 148)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 8)
+                        .frame(minHeight: 44, maxHeight: 92)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 6)
                         .background(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
                                 .fill(inputFill)
                         )
                         .overlay(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
                                 .stroke(Color.black.opacity(0.08), lineWidth: 1)
                         )
-                        .shadow(color: .black.opacity(0.04), radius: 6, y: 2)
+                        .shadow(color: .black.opacity(0.03), radius: 4, y: 1)
 
                     if draftInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        Text("输入你的问题，`Enter` 发送，`Shift + Enter` 换行")
-                            .font(.footnote)
+                        Text("输入问题，`Enter` 发送，`Shift + Enter` 换行")
+                            .font(.caption)
                             .foregroundStyle(.secondary)
-                            .padding(.horizontal, 18)
-                            .padding(.vertical, 15)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 12)
                             .allowsHitTesting(false)
                     }
                 }
 
                 HStack {
-                    Text("支持自由提问，也可结合当前选区讨论")
+                    Text(chatHintText)
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(chatHintColor)
                     Spacer()
                     Button {
                         sendCurrentInput()
@@ -115,7 +117,11 @@ struct ChatPanelView: View {
                     .buttonStyle(.borderedProminent)
                     .controlSize(.regular)
                     .tint(Color(red: 0.15, green: 0.43, blue: 0.88))
-                    .disabled(viewModel.chatState == .loading || draftInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(
+                        viewModel.chatState == .loading
+                        || draftInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        || !viewModel.isCurrentChatProviderUsable
+                    )
                 }
             }
             .padding(10)
@@ -126,9 +132,15 @@ struct ChatPanelView: View {
         .onAppear {
             draftInput = viewModel.chatInput
         }
+        .onChange(of: viewModel.chatInput) { newValue in
+            if draftInput != newValue {
+                draftInput = newValue
+            }
+        }
     }
 
     private func sendCurrentInput() {
+        guard viewModel.isCurrentChatProviderUsable else { return }
         let text = draftInput.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         draftInput = ""
@@ -178,6 +190,34 @@ struct ChatPanelView: View {
     private var inputFill: Color {
         colorScheme == .dark ? Color.black.opacity(0.34) : Color.white.opacity(0.82)
     }
+
+    private var providerSelector: some View {
+        HStack(spacing: 8) {
+            Text("回答模型")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            Picker("回答模型", selection: $viewModel.chatProviderOverride) {
+                ForEach(viewModel.chatSelectableProviders) { provider in
+                    Text(viewModel.chatProviderOptionTitle(provider))
+                        .tag(provider)
+                        .disabled(!viewModel.isChatProviderSelectable(provider))
+                }
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
+            Spacer()
+        }
+    }
+
+    private var chatHintText: String {
+        viewModel.isCurrentChatProviderUsable
+            ? "支持自由提问，也可结合当前选区讨论"
+            : "当前模型未配置 API Key，请先到设置页配置"
+    }
+
+    private var chatHintColor: Color {
+        viewModel.isCurrentChatProviderUsable ? .secondary : .orange
+    }
 }
 
 private struct ChatInputTextView: NSViewRepresentable {
@@ -202,7 +242,7 @@ private struct ChatInputTextView: NSViewRepresentable {
         textView.isAutomaticSpellingCorrectionEnabled = false
         textView.drawsBackground = false
         textView.font = preferredChatInputFont()
-        textView.textContainerInset = NSSize(width: 8, height: 10)
+        textView.textContainerInset = NSSize(width: 6, height: 7)
         textView.string = text
 
         context.coordinator.textView = textView
@@ -262,7 +302,7 @@ private struct ChatInputTextView: NSViewRepresentable {
     }
 
     private func preferredChatInputFont() -> NSFont {
-        let size: CGFloat = 14
+        let size: CGFloat = 13
         let base = NSFont.systemFont(ofSize: size, weight: .regular)
         if let descriptor = base.fontDescriptor.withDesign(.rounded) {
             return NSFont(descriptor: descriptor, size: size) ?? base

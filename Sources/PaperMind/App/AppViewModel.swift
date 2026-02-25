@@ -22,6 +22,7 @@ final class AppViewModel: ObservableObject {
     @Published var chatMessages: [ChatMessage] = []
     @Published var chatInput: String = ""
     @Published var chatState: RequestState = .idle
+    @Published var chatProviderOverride: AIProvider = .auto
     @Published var streamingAssistantMessageID: UUID?
     @Published var aiProvider: AIProvider = .auto
     @Published var appTheme: AppTheme = .light
@@ -47,8 +48,12 @@ final class AppViewModel: ObservableObject {
     private let dependencies: AppDependencies
     private var llmService: LLMService
     private var autoTranslateTask: Task<Void, Never>?
+    private var paperKnowledgePreloadTask: Task<Void, Never>?
     private var paperKnowledgeCache: [UUID: PaperKnowledge] = [:]
     private var translationCache: [String: String] = [:]
+    private var latestTranslationRequestID: UInt64 = 0
+    private var latestChatRequestID: UInt64 = 0
+    private let translationCacheLimit = 200
 
     init(dependencies: AppDependencies) {
         self.dependencies = dependencies
@@ -67,6 +72,7 @@ final class AppViewModel: ObservableObject {
     func saveAIConfiguration() {
         aiConfigState = .loading
         let settings = normalizedAISettings()
+        sanitizeChatProviderOverride()
 
         do {
             try dependencies.saveAISettings(settings)
@@ -117,14 +123,9 @@ final class AppViewModel: ObservableObject {
 
         do {
             try await dependencies.paperRepository.removePaper(id: id)
-            autoTranslateTask?.cancel()
+            cancelTransientTasks()
             selectedPaperID = nil
-            currentSelection = nil
-            currentSelectionAnchor = nil
-            selectedTextPreview = ""
-            isMathSelection = false
-            translationResult = ""
-            translationState = .idle
+            resetSelectionAndTranslationState(resetReaderPage: false)
             paperContextState = .idle
             await refreshPapers()
         } catch {
@@ -133,27 +134,16 @@ final class AppViewModel: ObservableObject {
     }
 
     func closeCurrentPaper() {
-        autoTranslateTask?.cancel()
+        cancelTransientTasks()
         selectedPaperID = nil
-        currentSelection = nil
-        currentSelectionAnchor = nil
-        currentReaderPageIndex = 0
-        selectedTextPreview = ""
-        isMathSelection = false
-        translationResult = ""
-        translationState = .idle
+        resetSelectionAndTranslationState(resetReaderPage: true)
         paperContextState = .idle
     }
 
     func didSelectPaper(id: UUID?) async {
-        autoTranslateTask?.cancel()
+        cancelTransientTasks()
         selectedPaperID = id
-        currentSelection = nil
-        currentSelectionAnchor = nil
-        selectedTextPreview = ""
-        isMathSelection = false
-        translationResult = ""
-        translationState = .idle
+        resetSelectionAndTranslationState(resetReaderPage: false)
         paperContextState = .idle
         await refreshNotesForSelectedPaper()
     }
@@ -174,11 +164,12 @@ final class AppViewModel: ObservableObject {
 
         translationResult = ""
         translationState = .loading
+        let requestID = beginTranslationRequest()
 
         autoTranslateTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 120_000_000)
             guard !Task.isCancelled else { return }
-            await self?.translateSelection()
+            await self?.performTranslateSelection(target: nil, requestID: requestID)
         }
     }
 
@@ -187,6 +178,8 @@ final class AppViewModel: ObservableObject {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard !trimmed.isEmpty else {
+            autoTranslateTask?.cancel()
+            invalidateTranslationRequests()
             currentSelection = nil
             currentSelectionAnchor = nil
             selectedTextPreview = ""
@@ -206,6 +199,7 @@ final class AppViewModel: ObservableObject {
         currentSelectionAnchor = anchorRect.map(NoteAnchorRect.init(rect:))
         selectedTextPreview = trimmed
         isMathSelection = FormulaDetector.isLikelyFormula(trimmed)
+        invalidateTranslationRequests()
 
         if let cached = translationCache[translationCacheKey(for: trimmed, target: translationTargetLanguage)] {
             translationResult = cached
@@ -217,39 +211,8 @@ final class AppViewModel: ObservableObject {
     }
 
     func translateSelection(target: String? = nil) async {
-        guard let selection = currentSelection else {
-            translationState = .failure("请先选择文本")
-            return
-        }
-
-        let target = (target ?? translationTargetLanguage).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !target.isEmpty else {
-            translationState = .failure("目标语言不能为空")
-            return
-        }
-
-        let cacheKey = translationCacheKey(for: selection.selectedText, target: target)
-        if let cached = translationCache[cacheKey] {
-            translationResult = cached
-            translationState = .success
-            return
-        }
-
-        translationState = .loading
-        do {
-            let result = try await dependencies.translationService.translate(
-                text: selection.selectedText,
-                source: nil,
-                target: target
-            )
-            translationResult = result
-            translationCache[cacheKey] = result
-            translationState = .success
-        } catch is CancellationError {
-            translationState = .idle
-        } catch {
-            translationState = .failure(error.localizedDescription)
-        }
+        let requestID = beginTranslationRequest()
+        await performTranslateSelection(target: target, requestID: requestID)
     }
 
     func updateTranslationTargetLanguage(_ target: String) async {
@@ -261,6 +224,7 @@ final class AppViewModel: ObservableObject {
     }
 
     func askAIUsingSelection(question: String? = nil) async {
+        guard ensureChatIdle() else { return }
         guard let selection = currentSelection else {
             chatState = .failure("请先选择论文片段")
             return
@@ -272,10 +236,36 @@ final class AppViewModel: ObservableObject {
             : input
 
         chatMode = .explain
-        await sendChatMessage(input: finalInput, selection: selection)
+        let requestID = beginChatRequest()
+        await sendChatMessage(input: finalInput, selection: selection, requestID: requestID)
+    }
+
+    func prepareChatDraftFromSelection() {
+        guard let selection = currentSelection else {
+            chatState = .failure("请先选择论文片段")
+            return
+        }
+
+        let quote = selection.selectedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let compactQuote: String
+        if quote.count > 1200 {
+            compactQuote = String(quote.prefix(1200)) + "…"
+        } else {
+            compactQuote = quote
+        }
+
+        chatMode = .explain
+        chatState = .idle
+        chatInput = """
+        [P\(selection.pageIndex + 1) 选区]
+        \(compactQuote)
+
+        我的问题：
+        """
     }
 
     func explainFormulaUsingSelection() async {
+        guard ensureChatIdle() else { return }
         guard let selection = currentSelection else {
             chatState = .failure("请先选择公式")
             return
@@ -293,16 +283,53 @@ final class AppViewModel: ObservableObject {
         公式：
         \(selection.selectedText)
         """
-        await sendChatMessage(input: prompt, selection: selection)
+        let requestID = beginChatRequest()
+        await sendChatMessage(input: prompt, selection: selection, requestID: requestID)
     }
 
     func sendChatFromInput(text: String? = nil) async {
+        guard ensureChatIdle() else { return }
         let input = (text ?? chatInput).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !input.isEmpty else {
             chatState = .failure("请输入问题")
             return
         }
-        await sendChatMessage(input: input, selection: currentSelection)
+        let requestID = beginChatRequest()
+        await sendChatMessage(input: input, selection: currentSelection, requestID: requestID)
+    }
+
+    var chatSelectableProviders: [AIProvider] {
+        AIProvider.allCases
+    }
+
+    var isCurrentChatProviderUsable: Bool {
+        isChatProviderSelectable(chatProviderOverride)
+    }
+
+    func isChatProviderSelectable(_ provider: AIProvider) -> Bool {
+        switch provider {
+        case .auto:
+            return true
+        case .openai:
+            return !normalizeAPIKey(openAIAPIKeyDraft).isEmpty
+        case .deepseek:
+            return !normalizeAPIKey(deepSeekAPIKeyDraft).isEmpty
+        case .kimi:
+            return !normalizeAPIKey(kimiAPIKeyDraft).isEmpty
+        }
+    }
+
+    func chatProviderOptionTitle(_ provider: AIProvider) -> String {
+        switch provider {
+        case .auto:
+            return "Auto"
+        case .openai:
+            return "OpenAI · \(normalizeModel(openAIModel, fallback: AISettings.default.openAIModel))"
+        case .deepseek:
+            return "DeepSeek · \(normalizeModel(deepSeekModel, fallback: AISettings.default.deepSeekModel))"
+        case .kimi:
+            return "Kimi · \(normalizeModel(kimiModel, fallback: AISettings.default.kimiModel))"
+        }
     }
 
     func createCommentThreadFromDraft() async {
@@ -462,7 +489,7 @@ final class AppViewModel: ObservableObject {
         }
     }
 
-    private func sendChatMessage(input: String, selection: TextSelection?) async {
+    private func sendChatMessage(input: String, selection: TextSelection?, requestID: UInt64) async {
         let userMessage = ChatMessage(
             id: UUID(),
             sessionID: chatSessionID,
@@ -483,33 +510,36 @@ final class AppViewModel: ObservableObject {
                 createdAt: Date()
             )
         )
+        guard isLatestChatRequest(requestID) else { return }
         chatInput = ""
         streamingAssistantMessageID = assistantMessageID
         chatState = .loading
 
         do {
+            let chatService = makeChatServiceForCurrentSelection()
             if let paper = selectedPaper {
                 if thinkingMode == .deep {
+                    paperKnowledgePreloadTask?.cancel()
+                    paperKnowledgePreloadTask = nil
                     _ = await loadPaperKnowledgeIfNeeded(for: paper)
                 } else {
-                    Task { [weak self] in
-                        guard let self else { return }
-                        _ = await self.loadPaperKnowledgeIfNeeded(for: paper)
-                    }
+                    schedulePaperKnowledgePreload(for: paper)
                 }
             }
 
-            let response = try await llmService.chatStream(
+            let response = try await chatService.chatStream(
                 messages: requestMessages,
                 context: buildContext(selection: selection)
             ) { [weak self] delta in
                 Task { @MainActor [weak self] in
                     guard let self,
+                          self.isLatestChatRequest(requestID),
                           let index = self.chatMessages.firstIndex(where: { $0.id == assistantMessageID }) else { return }
                     self.chatMessages[index].content += delta
                 }
             }
 
+            guard isLatestChatRequest(requestID) else { return }
             if let index = chatMessages.firstIndex(where: { $0.id == assistantMessageID }) {
                 chatMessages[index].content = response
             } else {
@@ -533,6 +563,7 @@ final class AppViewModel: ObservableObject {
             streamingAssistantMessageID = nil
             chatState = .success
         } catch {
+            guard isLatestChatRequest(requestID) else { return }
             if let index = chatMessages.firstIndex(where: { $0.id == assistantMessageID }),
                chatMessages[index].content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 chatMessages.remove(at: index)
@@ -581,6 +612,153 @@ final class AppViewModel: ObservableObject {
         "\(target)|\(text)"
     }
 
+    private func beginTranslationRequest() -> UInt64 {
+        latestTranslationRequestID &+= 1
+        return latestTranslationRequestID
+    }
+
+    private func beginChatRequest() -> UInt64 {
+        latestChatRequestID &+= 1
+        return latestChatRequestID
+    }
+
+    private func invalidateTranslationRequests() {
+        latestTranslationRequestID &+= 1
+    }
+
+    private func isLatestTranslationRequest(_ requestID: UInt64) -> Bool {
+        requestID == latestTranslationRequestID
+    }
+
+    private func isLatestChatRequest(_ requestID: UInt64) -> Bool {
+        requestID == latestChatRequestID
+    }
+
+    private func performTranslateSelection(target: String?, requestID: UInt64) async {
+        guard let selection = currentSelection else {
+            if isLatestTranslationRequest(requestID) {
+                translationState = .failure("请先选择文本")
+            }
+            return
+        }
+
+        let resolvedTarget = (target ?? translationTargetLanguage).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !resolvedTarget.isEmpty else {
+            if isLatestTranslationRequest(requestID) {
+                translationState = .failure("目标语言不能为空")
+            }
+            return
+        }
+
+        let cacheKey = translationCacheKey(for: selection.selectedText, target: resolvedTarget)
+        if let cached = translationCache[cacheKey] {
+            if isLatestTranslationRequest(requestID) {
+                translationResult = cached
+                translationState = .success
+            }
+            return
+        }
+
+        if isLatestTranslationRequest(requestID) {
+            translationState = .loading
+        }
+
+        do {
+            let result = try await dependencies.translationService.translate(
+                text: selection.selectedText,
+                source: nil,
+                target: resolvedTarget
+            )
+            cacheTranslation(result, for: cacheKey)
+
+            guard isLatestTranslationRequest(requestID) else { return }
+            translationResult = result
+            translationState = .success
+        } catch is CancellationError {
+            guard isLatestTranslationRequest(requestID) else { return }
+            translationState = .idle
+        } catch {
+            guard isLatestTranslationRequest(requestID) else { return }
+            translationState = .failure(error.localizedDescription)
+        }
+    }
+
+    private func cacheTranslation(_ result: String, for cacheKey: String) {
+        if translationCache.count >= translationCacheLimit {
+            translationCache.removeAll(keepingCapacity: true)
+        }
+        translationCache[cacheKey] = result
+    }
+
+    private func cancelTransientTasks() {
+        autoTranslateTask?.cancel()
+        autoTranslateTask = nil
+        paperKnowledgePreloadTask?.cancel()
+        paperKnowledgePreloadTask = nil
+    }
+
+    private func resetSelectionAndTranslationState(resetReaderPage: Bool) {
+        invalidateTranslationRequests()
+        currentSelection = nil
+        currentSelectionAnchor = nil
+        if resetReaderPage {
+            currentReaderPageIndex = 0
+        }
+        selectedTextPreview = ""
+        isMathSelection = false
+        translationResult = ""
+        translationState = .idle
+    }
+
+    private func schedulePaperKnowledgePreload(for paper: Paper) {
+        paperKnowledgePreloadTask?.cancel()
+        let paperID = paper.id
+        paperKnowledgePreloadTask = Task { [weak self] in
+            guard let self else { return }
+            await self.preloadKnowledgeIfCurrentPaper(expectedPaperID: paperID)
+        }
+    }
+
+    private func preloadKnowledgeIfCurrentPaper(expectedPaperID: UUID) async {
+        guard let paper = selectedPaper, paper.id == expectedPaperID else { return }
+        _ = await loadPaperKnowledgeIfNeeded(for: paper)
+    }
+
+    private func ensureChatIdle() -> Bool {
+        guard chatState == .loading else { return true }
+        chatState = .failure("请等待当前回答完成")
+        return false
+    }
+
+    private func makeChatServiceForCurrentSelection() -> LLMService {
+        let settings = normalizedAISettings()
+        let provider = resolvedChatProvider(using: settings)
+        var requestSettings = settings
+        requestSettings.provider = provider
+        return dependencies.makeLLMService(settings: requestSettings)
+    }
+
+    private func resolvedChatProvider(using settings: AISettings) -> AIProvider {
+        let preferred = chatProviderOverride
+        if preferred != .auto, hasConfiguredKey(for: preferred, settings: settings) {
+            return preferred
+        }
+        return settings.provider
+    }
+
+    private func hasConfiguredKey(for provider: AIProvider, settings: AISettings) -> Bool {
+        switch provider {
+        case .openai:
+            return !normalizeAPIKey(settings.openAIAPIKey).isEmpty
+        case .deepseek:
+            return !normalizeAPIKey(settings.deepSeekAPIKey).isEmpty
+        case .kimi:
+            return !normalizeAPIKey(settings.kimiAPIKey).isEmpty
+        case .auto:
+            return true
+        }
+    }
+
     private func loadAIConfiguration() {
         let settings = dependencies.loadAISettings()
         aiProvider = settings.provider
@@ -594,6 +772,7 @@ final class AppViewModel: ObservableObject {
         kimiAPIKeyDraft = settings.kimiAPIKey
 
         llmService = dependencies.makeLLMService(settings: settings)
+        sanitizeChatProviderOverride()
     }
 
     private func normalizedAISettings() -> AISettings {
@@ -616,5 +795,11 @@ final class AppViewModel: ObservableObject {
 
     private func normalizeAPIKey(_ value: String) -> String {
         value.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func sanitizeChatProviderOverride() {
+        if !isChatProviderSelectable(chatProviderOverride) {
+            chatProviderOverride = .auto
+        }
     }
 }

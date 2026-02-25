@@ -235,7 +235,7 @@ struct AISettings: Codable, Equatable {
         theme: .light,
         openAIModel: "gpt-4o-mini",
         deepSeekModel: "deepseek-chat",
-        kimiModel: "moonshot-v1-8k",
+        kimiModel: "kimi-2.5",
         openAIAPIKey: "",
         deepSeekAPIKey: "",
         kimiAPIKey: ""

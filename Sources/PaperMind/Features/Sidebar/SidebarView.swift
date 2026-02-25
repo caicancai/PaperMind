@@ -61,38 +61,6 @@ struct SidebarView: View {
 
             paperReadStatus
 
-            if !viewModel.selectedTextPreview.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("当前选区")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text(viewModel.selectedTextPreview)
-                        .font(.callout)
-                        .lineLimit(5)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                    HStack {
-                        Button("带选区提问") {
-                            Task { await viewModel.askAIUsingSelection() }
-                        }
-                        .buttonStyle(.bordered)
-                        .disabled(viewModel.currentSelection == nil)
-
-                        Button("解释公式") {
-                            Task { await viewModel.explainFormulaUsingSelection() }
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(colorScheme == .dark
-                              ? Color(red: 0.28, green: 0.48, blue: 0.70)
-                              : Color(red: 0.13, green: 0.49, blue: 0.73))
-                        .disabled(viewModel.currentSelection == nil)
-                    }
-                    .font(.caption)
-                }
-                .padding(12)
-                .background(sectionFill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            }
-
             ChatPanelView(viewModel: viewModel)
         }
         .padding(8)

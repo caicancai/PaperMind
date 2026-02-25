@@ -12,7 +12,7 @@ struct AppDependencies {
     static func makeLive() -> AppDependencies {
         let baseURL = AppDirectories.appSupportDirectory()
         let store = JSONFileStore()
-        let env = effectiveEnvironment()
+        let env = ProcessInfo.processInfo.environment
         let aiSettingsStore = AISettingsStore(store: store, fileURL: baseURL.appendingPathComponent("ai-settings.json"))
         let mockTranslation = MockTranslationService()
         let translationService = FallbackTranslationService(
@@ -87,11 +87,11 @@ struct AppDependencies {
                 providerName: "deepseek",
                 apiKey: key,
                 model: model,
-                endpoint: URL(string: "https://api.deepseek.com/chat/completions")!,
+                endpoint: URL(string: "https://api.deepseek.com/v1/chat/completions")!,
                 timeoutSeconds: timeout
             )
         case .kimi:
-            let model = cleanModel(settings.kimiModel, env["KIMI_MODEL"], fallback: "moonshot-v1-8k")
+            let model = cleanModel(settings.kimiModel, env["KIMI_MODEL"], fallback: "kimi-2.5")
             let timeout = Double(env["KIMI_TIMEOUT_SECONDS"] ?? "") ?? 40
             return OpenAILLMService(
                 providerName: "kimi",
@@ -110,17 +110,15 @@ struct AppDependencies {
             return persisted
         }
 
-        let providerRaw = env["AI_PROVIDER"]?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? "auto"
-        let provider = AIProvider(rawValue: providerRaw) ?? .auto
         let settings = AISettings(
-            provider: provider,
+            provider: .auto,
             theme: .light,
-            openAIModel: cleanModel(nil, env["OPENAI_MODEL"], fallback: AISettings.default.openAIModel),
-            deepSeekModel: cleanModel(nil, env["DEEPSEEK_MODEL"], fallback: AISettings.default.deepSeekModel),
-            kimiModel: cleanModel(nil, env["KIMI_MODEL"], fallback: AISettings.default.kimiModel),
-            openAIAPIKey: cleanKey(env["OPENAI_API_KEY"]) ?? "",
-            deepSeekAPIKey: cleanKey(env["DEEPSEEK_API_KEY"]) ?? "",
-            kimiAPIKey: cleanKey(env["KIMI_API_KEY"]) ?? ""
+            openAIModel: AISettings.default.openAIModel,
+            deepSeekModel: AISettings.default.deepSeekModel,
+            kimiModel: AISettings.default.kimiModel,
+            openAIAPIKey: "",
+            deepSeekAPIKey: "",
+            kimiAPIKey: ""
         )
 
         try? store.save(settings)
@@ -128,13 +126,14 @@ struct AppDependencies {
     }
 
     private static func resolveAPIKey(for provider: AIProvider, settings: AISettings, env: [String: String]) -> String? {
+        _ = env
         switch provider {
         case .openai:
-            return cleanKey(settings.openAIAPIKey) ?? cleanKey(env["OPENAI_API_KEY"])
+            return cleanKey(settings.openAIAPIKey)
         case .deepseek:
-            return cleanKey(settings.deepSeekAPIKey) ?? cleanKey(env["DEEPSEEK_API_KEY"])
+            return cleanKey(settings.deepSeekAPIKey)
         case .kimi:
-            return cleanKey(settings.kimiAPIKey) ?? cleanKey(env["KIMI_API_KEY"])
+            return cleanKey(settings.kimiAPIKey)
         case .auto:
             return nil
         }
@@ -167,73 +166,10 @@ struct AppDependencies {
         }
     }
 
-    private static func effectiveEnvironment() -> [String: String] {
-        let runtime = ProcessInfo.processInfo.environment
-        let local = LocalEnvLoader.load(candidates: envCandidateURLs())
-        return runtime.merging(local) { current, _ in current }
-    }
-
-    private static func envCandidateURLs() -> [URL] {
-        var urls: [URL] = []
-        let fileManager = FileManager.default
-
-        let cwd = URL(fileURLWithPath: fileManager.currentDirectoryPath, isDirectory: true)
-        urls.append(cwd.appendingPathComponent(".env.local"))
-
-        let execURL = URL(fileURLWithPath: CommandLine.arguments.first ?? fileManager.currentDirectoryPath, isDirectory: false)
-        var base = execURL.deletingLastPathComponent()
-        for _ in 0..<6 {
-            urls.append(base.appendingPathComponent(".env.local"))
-            let parent = base.deletingLastPathComponent()
-            if parent.path == base.path { break }
-            base = parent
-        }
-
-        return urls
-    }
 }
 
 private extension String {
     var nonEmpty: String? {
         isEmpty ? nil : self
-    }
-}
-
-private enum LocalEnvLoader {
-    static func load(candidates: [URL]) -> [String: String] {
-        for url in candidates {
-            if let parsed = parseSingleFile(url: url) {
-                return parsed
-            }
-        }
-        return [:]
-    }
-
-    private static func parseSingleFile(url: URL) -> [String: String]? {
-        guard let data = try? Data(contentsOf: url),
-              let content = String(data: data, encoding: .utf8) else {
-            return nil
-        }
-
-        var values: [String: String] = [:]
-        for rawLine in content.components(separatedBy: .newlines) {
-            let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
-            if line.isEmpty || line.hasPrefix("#") { continue }
-
-            let parts = line.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
-            guard parts.count == 2 else { continue }
-
-            let key = String(parts[0]).trimmingCharacters(in: .whitespacesAndNewlines)
-            var value = String(parts[1]).trimmingCharacters(in: .whitespacesAndNewlines)
-            if value.hasPrefix("\""), value.hasSuffix("\""), value.count >= 2 {
-                value.removeFirst()
-                value.removeLast()
-            }
-            if !key.isEmpty {
-                values[key] = value
-            }
-        }
-
-        return values
     }
 }
