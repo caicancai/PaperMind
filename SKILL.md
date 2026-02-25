@@ -1,101 +1,85 @@
 ---
-name: moepeek-swift-app
-description: Use this skill when working on the MoePeek macOS SwiftUI+AppKit codebase, including build/run steps, architecture-aware edits, translation flow changes, and code reviews focused on Swift concurrency, UI state, and memory-leak risks.
+name: papermind-swift-app
+description: Use this skill when working on PaperMind, a macOS SwiftUI paper-reading app with PDF selection translation and AI chat. Apply for architecture-aware edits, provider/model settings, chat interaction updates, and code reviews focused on async state safety.
 ---
 
-# MoePeek Repo Skill
+# PaperMind Repo Skill
 
-Apply this skill for tasks in the MoePeek repository.
+Apply this skill for tasks in this repository.
 
 ## Build and Run
 
-This project uses Tuist + Swift Package Manager.
+This project is Swift Package Manager based.
 
 ```bash
-tuist install && tuist generate
-xcodebuild -workspace MoePeek.xcworkspace -scheme MoePeek -configuration Debug build
-open MoePeek.xcworkspace
+swift build
+open .build/debug/PaperMind
 ```
 
-Regenerate project files after `Project.swift` or `Package.swift` changes:
+For release build:
 
 ```bash
-tuist generate
+swift build -c release
 ```
 
 ## Stack and Constraints
 
-- Swift 6+, strict concurrency (`SWIFT_STRICT_CONCURRENCY: complete`)
-- macOS 14+ menu bar app (`LSUIElement`)
-- SwiftUI + AppKit hybrid (SwiftUI views, AppKit window/panel lifecycle)
-- Dependencies: `KeyboardShortcuts`, `Defaults`
+- Swift 5.10+, SwiftUI, PDFKit
+- macOS desktop app (`Package.swift` currently targets macOS 13+)
+- MVVM + Service + Repository
+- Async workflows with `URLSession` and structured concurrency
 
 ## Core Architecture
 
 Primary flow:
 
-1. User triggers translation (shortcut, selection, OCR)
-2. `TranslationCoordinator` drives state: `idle -> grabbing -> translating -> streaming -> completed/error`
-3. Text grab fallback: `AccessibilityGrabber -> AppleScriptGrabber -> ClipboardGrabber`
-4. Language detection and target adjustment
-5. Translation provider streams output
-6. `PopupPanelController` presents floating panel near cursor
+1. User imports/selects a PDF in library
+2. Reader emits selection and page-anchor context
+3. Selection triggers translation and optional AI actions
+4. Chat panel streams AI response with paper/selection context
+5. Settings control provider/model/API key locally
 
 Critical files:
 
-- `Sources/Core/TranslationCoordinator.swift`
-- `Sources/App/AppDelegate.swift`
-- `Sources/Core/TextSelectionManager.swift`
-- `Sources/UI/Popup/PopupPanelController.swift`
-- `Sources/Utilities/Constants.swift`
+- `Sources/PaperMind/App/AppViewModel.swift`
+- `Sources/PaperMind/App/AppDependencies.swift`
+- `Sources/PaperMind/Features/Reader/ReaderPaneView.swift`
+- `Sources/PaperMind/Features/Chat/ChatPanelView.swift`
+- `Sources/PaperMind/Features/Settings/AISettingsFormView.swift`
+- `Sources/PaperMind/Services/LLM/OpenAILLMService.swift`
+
+## Current Interaction Rules
+
+- In-reader floating card should remain the primary selection workflow.
+- Selection actions include `Translate`, `Add Chat`, `Explain Formula`.
+- `Add Chat` should prefill chat draft from current selection, then user asks.
+- Chat supports per-question provider selection (`Auto/OpenAI/DeepSeek/Kimi`).
+- Providers without configured API keys are not selectable for send.
+- AI provider/model/key are configured in-app; no `.env.local` fallback.
+
+## Provider and Model Notes
+
+- Supported providers: OpenAI / DeepSeek / Kimi
+- DeepSeek endpoint: `https://api.deepseek.com/v1/chat/completions`
+- Kimi default model: `kimi-2.5`
 
 ## Editing Rules
 
-- Keep UI-related controllers and coordinators `@MainActor` aligned.
-- Do not break non-activating `NSPanel` behavior (must not steal focus).
-- Preserve callback wiring style in `AppDelegate.setupSelectionMonitor()` with weak captures for stored/system callbacks.
-- For `@Observable` types, avoid writable computed properties that proxy external state. Prefer stored property + `didSet` sync.
-
-## Permissions Model
-
-App depends on:
-
-- Accessibility (AX grabbing)
-- Screen Recording (OCR)
-
-`PermissionManager` polls permissions periodically; keep polling stop conditions correct.
-
-## Translation Provider Work
-
-When adding or changing providers:
-
-1. Implement provider protocol with streaming API (`AsyncThrowingStream`)
-2. Register provider in registry
-3. Ensure settings view integration remains self-contained in provider
-
-## Localization
-
-- Use `Resources/Localizable.xcstrings` for localizable strings.
-- SwiftUI text: localized key literals.
-- Runtime strings: `String(localized:)`.
-- Keep API labels / provider IDs / brand terms non-localized where intended.
+- Keep `AppViewModel` as the single coordination point for async UI state.
+- Prevent stale async tasks from overriding latest UI state (request-id or equivalent guard).
+- Preserve cancellation behavior for translation and chat flows.
+- Do not silently fallback to mock AI when provider/key is unavailable.
+- Keep provider wiring in dependencies/services, not SwiftUI views.
 
 ## Code Review Focus
 
 Prioritize findings in this order:
 
-1. Concurrency safety (actor isolation, Sendable, task lifetime)
-2. Behavioral regressions in translation state machine and popup lifecycle
-3. Memory leaks in long-running menu bar process
-4. UI-state correctness (`@Observable`, bindings, panel ownership)
-
-Memory checks:
-
-- Stored closures and long-lived callbacks: use `[weak self]`
-- Timers: `invalidate()` and nil-out in stop/dismiss paths
-- Event monitors: always remove on stop and deinit
-- `AsyncThrowingStream`: cancel backing task in `onTermination`
-- `NSWindow/NSPanel` with retained lifecycle: release `contentView` and references on dismiss
+1. Async state races and stale-response overwrite risks
+2. Behavioral regressions in selection -> translate/chat interaction
+3. Provider routing and API error handling correctness
+4. UI consistency in reader floating card and chat panel
+5. Local settings persistence and migration safety
 
 ## Release Notes
 
