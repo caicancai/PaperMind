@@ -2,75 +2,131 @@ import SwiftUI
 
 struct ChatPanelView: View {
     @ObservedObject var viewModel: AppViewModel
+    @State private var draftInput: String = ""
     @FocusState private var isInputFocused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("论文对话")
-                    .font(.headline)
-            }
+        VStack(alignment: .leading, spacing: 10) {
+            Text("论文对话")
+                .font(.system(.headline, design: .rounded, weight: .semibold))
 
-            GroupBox("消息") {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 8) {
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 10) {
+                    if viewModel.chatMessages.isEmpty {
+                        Text("你可以直接提问，或先选中一段内容再深入讨论。")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.white.opacity(0.6), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    } else {
                         ForEach(viewModel.chatMessages) { message in
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(message.role.rawValue.uppercased())
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: message.role == .assistant ? "sparkles" : "person.fill")
+                                        .font(.caption)
+                                        .foregroundStyle(message.role == .assistant ? .teal : .blue)
+                                    Text(message.role == .assistant ? "Assistant" : "You")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
                                 if message.role == .assistant {
-                                    MarkdownContentView(markdown: message.content)
+                                    if viewModel.streamingAssistantMessageID == message.id {
+                                        Text(message.content)
+                                            .font(.system(.body, design: .serif))
+                                            .textSelection(.enabled)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                    } else {
+                                        MarkdownContentView(markdown: message.content)
+                                    }
                                 } else {
                                     Text(message.content)
                                         .textSelection(.enabled)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
                                 }
                             }
+                            .padding(10)
+                            .background(
+                                message.role == .assistant
+                                ? Color.white.opacity(0.70)
+                                : Color(red: 0.88, green: 0.94, blue: 1.00)
+                            )
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .stroke(.white.opacity(0.65), lineWidth: 1)
+                            )
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(8)
-                            .background(message.role == .user ? .blue.opacity(0.1) : .gray.opacity(0.1))
-                            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                            .shadow(color: .black.opacity(0.03), radius: 4, y: 2)
                         }
                     }
                 }
-                .frame(minHeight: 260)
             }
+            .frame(minHeight: 260)
+            .padding(10)
+            .background(Color.white.opacity(0.42), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
 
             VStack(alignment: .leading, spacing: 8) {
                 Text("输入问题")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                TextEditor(text: $viewModel.chatInput)
-                    .frame(minHeight: 72, maxHeight: 120)
-                    .focused($isInputFocused)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(.gray.opacity(0.35), lineWidth: 1)
-                    )
+                ZStack(alignment: .topLeading) {
+                    TextEditor(text: $draftInput)
+                        .font(.system(.callout, design: .rounded))
+                        .frame(minHeight: 80, maxHeight: 140)
+                        .focused($isInputFocused)
+                        .padding(6)
+                        .background(Color.white.opacity(0.70), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color(red: 0.79, green: 0.84, blue: 0.95), lineWidth: 1)
+                        )
+
+                    if draftInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Text("输入你的问题，`Cmd + Enter` 发送")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 14)
+                            .allowsHitTesting(false)
+                    }
+                }
 
                 HStack {
                     Text("支持自由提问，也可结合当前选区讨论")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                     Spacer()
-                    Button("发送") {
-                        Task { await viewModel.sendChatFromInput() }
+                    Button {
+                        sendCurrentInput()
+                    } label: {
+                        Label("发送", systemImage: "arrow.up.circle.fill")
                     }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Color(red: 0.18, green: 0.46, blue: 0.92))
                     .keyboardShortcut(.return, modifiers: [.command])
-                    .disabled(viewModel.chatState == .loading)
+                    .disabled(viewModel.chatState == .loading || draftInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
+            .padding(10)
+            .background(Color.white.opacity(0.50), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
 
             statusView
-
-            Spacer()
         }
         .onAppear {
+            draftInput = viewModel.chatInput
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                 isInputFocused = true
             }
         }
+    }
+
+    private func sendCurrentInput() {
+        let text = draftInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        draftInput = ""
+        Task { await viewModel.sendChatFromInput(text: text) }
     }
 
     @ViewBuilder
@@ -79,13 +135,29 @@ struct ChatPanelView: View {
         case .idle:
             EmptyView()
         case .loading:
-            HStack { ProgressView(); Text("思考中...") }
+            HStack(spacing: 8) {
+                ProgressView()
+                Text("思考中...")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Color.white.opacity(0.6), in: Capsule())
         case .success:
             Text("回答完成")
-                .foregroundStyle(.green)
+                .font(.caption)
+                .foregroundStyle(Color(red: 0.12, green: 0.55, blue: 0.30))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color.white.opacity(0.6), in: Capsule())
         case .failure(let message):
             Text(message)
+                .font(.caption)
                 .foregroundStyle(.red)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color.white.opacity(0.6), in: Capsule())
         }
     }
 }
@@ -103,10 +175,12 @@ private struct MarkdownContentView: View {
             )
         ) {
             Text(attributed)
+                .font(.system(.body, design: .serif))
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
         } else {
             Text(normalized)
+                .font(.system(.body, design: .serif))
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -114,12 +188,22 @@ private struct MarkdownContentView: View {
 
     private func normalizeMarkdown(_ raw: String) -> String {
         let t = raw.replacingOccurrences(of: "\r\n", with: "\n")
-        // If model returns one long line, inject lightweight paragraph breaks after sentence endings.
-        if !t.contains("\n"), t.count > 160 {
-            return t
-                .replacingOccurrences(of: "。", with: "。\n\n")
-                .replacingOccurrences(of: ". ", with: ".\n\n")
+        let trimmed = t.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !trimmed.contains("\n"), trimmed.count > 220 else {
+            return trimmed
         }
-        return t
+
+        // Only apply lightweight line breaking for very long single-line Chinese output.
+        if trimmed.contains("。") || trimmed.contains("；") || trimmed.contains("！") || trimmed.contains("？") {
+            return trimmed
+                .replacingOccurrences(of: "。", with: "。\n")
+                .replacingOccurrences(of: "；", with: "；\n")
+                .replacingOccurrences(of: "！", with: "！\n")
+                .replacingOccurrences(of: "？", with: "？\n")
+                .replacingOccurrences(of: "\n\n\n", with: "\n\n")
+        }
+
+        return trimmed
     }
 }

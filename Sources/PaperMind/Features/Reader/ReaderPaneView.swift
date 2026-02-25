@@ -128,7 +128,7 @@ struct ReaderPaneView: View {
                 Button("重试翻译") {
                     Task { await viewModel.translateSelection() }
                 }
-                Button("问 AI") {
+                Button("带选区提问") {
                     Task { await viewModel.askAIUsingSelection() }
                 }
                 Button("解释公式") {

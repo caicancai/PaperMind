@@ -39,7 +39,8 @@ struct OpenAILLMService: LLMService {
         let payload = OpenAIChatRequest(
             model: model,
             messages: [OpenAIMessage(role: "system", content: systemPrompt)] + userMessages,
-            temperature: 0.3
+            temperature: 0.55,
+            stream: nil
         )
 
         var request = URLRequest(url: endpoint)
@@ -65,12 +66,65 @@ struct OpenAILLMService: LLMService {
         return content
     }
 
+    func chatStream(
+        messages: [ChatMessage],
+        context: PaperContext?,
+        onDelta: @escaping @Sendable (String) -> Void
+    ) async throws -> String {
+        let userMessages = messages.map { message in
+            OpenAIMessage(role: message.role.rawValue, content: message.content)
+        }
+
+        let systemPrompt = buildSystemPrompt(context: context)
+        let payload = OpenAIChatRequest(
+            model: model,
+            messages: [OpenAIMessage(role: "system", content: systemPrompt)] + userMessages,
+            temperature: 0.55,
+            stream: true
+        )
+
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.timeoutInterval = timeoutSeconds
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.addValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.httpBody = try JSONEncoder().encode(payload)
+
+        let (bytes, response) = try await session.bytes(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw PMError.network("\(providerName) LLM 流式请求失败（HTTP \((response as? HTTPURLResponse)?.statusCode ?? -1)）")
+        }
+
+        var fullContent = ""
+        for try await line in bytes.lines {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard trimmed.hasPrefix("data:") else { continue }
+
+            let dataPart = trimmed.dropFirst(5).trimmingCharacters(in: .whitespacesAndNewlines)
+            if dataPart == "[DONE]" { break }
+            guard let data = dataPart.data(using: .utf8) else { continue }
+
+            if let chunk = try? JSONDecoder().decode(OpenAIChatStreamChunk.self, from: data),
+               let delta = chunk.choices.first?.delta.content,
+               !delta.isEmpty {
+                fullContent += delta
+                onDelta(delta)
+            }
+        }
+
+        let result = fullContent.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !result.isEmpty else {
+            throw PMError.network("LLM 流式响应为空")
+        }
+        return result
+    }
+
     private func buildSystemPrompt(context: PaperContext?) -> String {
         let paperTitle = context?.paper.title ?? "未知论文"
         let selection = context?.selection?.selectedText ?? ""
         let knowledge = context?.knowledge
 
-        var base = "你是论文阅读助手。当前论文：\(paperTitle)。"
+        var base = "你是论文阅读助手。当前论文：\(paperTitle)。请使用自然、流畅、易读的中文回答，优先短段落，避免僵硬模板语气。"
 
         if let knowledge {
             base += "你在回答前已经阅读过这篇论文的本地抽取上下文（页数：\(knowledge.pageCount)，采样字符：\(knowledge.sampledCharacterCount)）。请优先基于该上下文回答。"
@@ -123,6 +177,7 @@ private struct OpenAIChatRequest: Encodable {
     let model: String
     let messages: [OpenAIMessage]
     let temperature: Double
+    let stream: Bool?
 }
 
 private struct OpenAIMessage: Codable {
@@ -139,5 +194,17 @@ private struct OpenAIChatResponse: Decodable {
 
     struct Message: Decodable {
         let content: String
+    }
+}
+
+private struct OpenAIChatStreamChunk: Decodable {
+    let choices: [Choice]
+
+    struct Choice: Decodable {
+        let delta: Delta
+    }
+
+    struct Delta: Decodable {
+        let content: String?
     }
 }
