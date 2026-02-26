@@ -46,6 +46,24 @@ swift build
 open .build/debug/PaperMind
 ```
 
+## Package DMG
+
+```bash
+./scripts/package-dmg.sh
+```
+
+Generated file:
+
+```text
+release/PaperMind-<version>.dmg
+```
+
+Options:
+
+- `--version <vX.Y.Z>` set package version
+- `--debug` package debug build
+- `--skip-build` package from existing binary without rebuilding
+
 ## Demo
 
 ![PaperMind Demo](docs/demo.gif)

@@ -43,6 +43,24 @@ swift build
 open .build/debug/PaperMind
 ```
 
+## 打包 DMG
+
+```bash
+./scripts/package-dmg.sh
+```
+
+产物路径：
+
+```text
+release/PaperMind-<version>.dmg
+```
+
+可选参数：
+
+- `--version <vX.Y.Z>` 指定版本号
+- `--debug` 使用 debug 构建打包
+- `--skip-build` 不重新构建，直接使用已有二进制打包
+
 ## 演示
 
 ![PaperMind Demo](docs/demo.gif)
