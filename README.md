@@ -64,6 +64,29 @@ Options:
 - `--debug` package debug build
 - `--skip-build` package from existing binary without rebuilding
 
+## Signed + Notarized Release DMG
+
+Prerequisites:
+- Developer ID Application certificate in Keychain
+- notarytool profile (recommended):
+
+```bash
+xcrun notarytool store-credentials "PaperMindNotary" \
+  --apple-id "<apple-id>" \
+  --team-id "<team-id>" \
+  --password "<app-specific-password>"
+```
+
+Build, sign, notarize and staple:
+
+```bash
+./scripts/release-dmg.sh v0.0.1 \
+  --identity "Developer ID Application: Your Name (TEAMID)" \
+  --notary-profile "PaperMindNotary"
+```
+
+If you skip signing/notarization, macOS may report the app as damaged or block opening.
+
 ## Demo
 
 ![PaperMind Demo](docs/demo.gif)

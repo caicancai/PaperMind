@@ -61,6 +61,29 @@ release/PaperMind-<version>.dmg
 - `--debug` 使用 debug 构建打包
 - `--skip-build` 不重新构建，直接使用已有二进制打包
 
+## 正式发布 DMG（签名 + 公证）
+
+前置条件：
+- Keychain 中存在 `Developer ID Application` 证书
+- 配置好 notarytool 凭据（推荐）：
+
+```bash
+xcrun notarytool store-credentials "PaperMindNotary" \
+  --apple-id "<apple-id>" \
+  --team-id "<team-id>" \
+  --password "<app-specific-password>"
+```
+
+一键构建、签名、公证并加盖：
+
+```bash
+./scripts/release-dmg.sh v0.0.1 \
+  --identity "Developer ID Application: Your Name (TEAMID)" \
+  --notary-profile "PaperMindNotary"
+```
+
+若跳过签名/公证，macOS 可能提示“已损坏”或阻止打开。
+
 ## 演示
 
 ![PaperMind Demo](docs/demo.gif)
