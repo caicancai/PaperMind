@@ -24,6 +24,7 @@ final class AppViewModel: ObservableObject {
     @Published var chatState: RequestState = .idle
     @Published var chatProviderOverride: AIProvider = .auto
     @Published var streamingAssistantMessageID: UUID?
+    @Published var pinnedChatSelectionSummary: String?
     @Published var aiProvider: AIProvider = .auto
     @Published var appTheme: AppTheme = .light
     @Published var openAIModel: String = AISettings.default.openAIModel
@@ -51,6 +52,7 @@ final class AppViewModel: ObservableObject {
     private var paperKnowledgePreloadTask: Task<Void, Never>?
     private var paperKnowledgeCache: [UUID: PaperKnowledge] = [:]
     private var translationCache: [String: String] = [:]
+    private var pinnedChatSelection: TextSelection?
     private var latestTranslationRequestID: UInt64 = 0
     private var latestChatRequestID: UInt64 = 0
     private let translationCacheLimit = 200
@@ -246,22 +248,18 @@ final class AppViewModel: ObservableObject {
             return
         }
 
-        let quote = selection.selectedText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let compactQuote: String
-        if quote.count > 1200 {
-            compactQuote = String(quote.prefix(1200)) + "…"
-        } else {
-            compactQuote = quote
-        }
-
+        pinnedChatSelection = selection
+        pinnedChatSelectionSummary = "已附加选区 P\(selection.pageIndex + 1) · \(selection.selectedText.count) 字"
         chatMode = .explain
         chatState = .idle
-        chatInput = """
-        [P\(selection.pageIndex + 1) 选区]
-        \(compactQuote)
+        if chatInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            chatInput = ""
+        }
+    }
 
-        我的问题：
-        """
+    func clearPinnedChatSelection() {
+        pinnedChatSelection = nil
+        pinnedChatSelectionSummary = nil
     }
 
     func explainFormulaUsingSelection() async {
@@ -294,8 +292,13 @@ final class AppViewModel: ObservableObject {
             chatState = .failure("请输入问题")
             return
         }
+        let selectionForMessage = pinnedChatSelection ?? currentSelection
+        let usedPinnedSelection = pinnedChatSelection != nil
         let requestID = beginChatRequest()
-        await sendChatMessage(input: input, selection: currentSelection, requestID: requestID)
+        await sendChatMessage(input: input, selection: selectionForMessage, requestID: requestID)
+        if usedPinnedSelection, chatState == .success {
+            clearPinnedChatSelection()
+        }
     }
 
     var chatSelectableProviders: [AIProvider] {

@@ -75,6 +75,25 @@ struct ChatPanelView: View {
                     .foregroundStyle(.secondary)
 
                 providerSelector
+                if let pinned = viewModel.pinnedChatSelectionSummary {
+                    HStack(spacing: 8) {
+                        Label(pinned, systemImage: "paperclip")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button {
+                            viewModel.clearPinnedChatSelection()
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
+                    .background(panelFill, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
 
                 ZStack(alignment: .topLeading) {
                     ChatInputTextView(

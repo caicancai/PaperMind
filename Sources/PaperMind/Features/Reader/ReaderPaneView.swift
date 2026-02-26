@@ -28,14 +28,12 @@ struct ReaderPaneView: View {
                             floatingTranslationCard
                                 .frame(width: popupWidth)
                                 .position(popupPosition(in: proxy.size, popupWidth: popupWidth, popupHeight: popupHeight))
-                                .transition(.opacity.combined(with: .scale))
+                                .transition(.opacity)
                         }
 
                     }
                     .animation(.spring(response: 0.24, dampingFraction: 0.88), value: selectionRect)
                     .animation(.easeOut(duration: 0.18), value: viewModel.currentSelection != nil)
-                    .animation(.easeOut(duration: 0.18), value: viewModel.translationState)
-                    .animation(.easeOut(duration: 0.18), value: viewModel.translationResult)
                 }
             } else {
                 VStack(spacing: 10) {
@@ -55,19 +53,11 @@ struct ReaderPaneView: View {
     }
 
     private var popupWidth: CGFloat {
-        let selectionCount = viewModel.selectedTextPreview.count
-        let translationCount = viewModel.translationResult.count
-        let basis = max(selectionCount, translationCount)
-        let width = 280 + CGFloat(min(max(basis, 0), 220)) * 0.8
-        return min(max(width, 280), 460)
+        360
     }
 
     private var popupHeight: CGFloat {
-        var height: CGFloat = 148
-        if viewModel.translationState == .loading { height += 12 }
-        if !viewModel.selectedTextPreview.isEmpty { height += 14 }
-        height += CGFloat(min(viewModel.translationResult.count, 280)) * 0.22
-        return min(max(height, 150), 300)
+        240
     }
 
     private var floatingTranslationCard: some View {
