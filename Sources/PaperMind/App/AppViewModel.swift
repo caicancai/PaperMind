@@ -270,7 +270,7 @@ final class AppViewModel: ObservableObject {
         }
 
         chatMode = .explain
-        let prompt = """
+        let hiddenPrompt = """
         请用中文解释下面这个数学公式，回答尽量自然、清晰、易读。
         优先说明：
         - 这个公式在表达什么
@@ -281,8 +281,14 @@ final class AppViewModel: ObservableObject {
         公式：
         \(selection.selectedText)
         """
+        let displayPrompt = "请解释这段公式，结合当前选区与论文上下文。"
         let requestID = beginChatRequest()
-        await sendChatMessage(input: prompt, selection: selection, requestID: requestID)
+        await sendChatMessage(
+            input: hiddenPrompt,
+            selection: selection,
+            requestID: requestID,
+            displayInput: displayPrompt
+        )
     }
 
     func sendChatFromInput(text: String? = nil) async {
@@ -492,16 +498,26 @@ final class AppViewModel: ObservableObject {
         }
     }
 
-    private func sendChatMessage(input: String, selection: TextSelection?, requestID: UInt64) async {
+    private func sendChatMessage(
+        input: String,
+        selection: TextSelection?,
+        requestID: UInt64,
+        displayInput: String? = nil
+    ) async {
+        let visibleInput = (displayInput ?? input).trimmingCharacters(in: .whitespacesAndNewlines)
         let userMessage = ChatMessage(
             id: UUID(),
             sessionID: chatSessionID,
             role: .user,
-            content: input,
+            content: visibleInput,
             createdAt: Date()
         )
         chatMessages.append(userMessage)
-        let requestMessages = chatMessages
+        var requestMessages = chatMessages
+        if visibleInput != input,
+           let index = requestMessages.lastIndex(where: { $0.id == userMessage.id }) {
+            requestMessages[index].content = input
+        }
 
         let assistantMessageID = UUID()
         chatMessages.append(
