@@ -14,24 +14,24 @@ struct RootView: View {
 
             NavigationSplitView {
                 LibraryView(viewModel: viewModel)
-                    .navigationSplitViewColumnWidth(min: 220, ideal: 270, max: 320)
+                    .navigationSplitViewColumnWidth(min: 180, ideal: 240, max: 300)
                     .padding(10)
                     .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             } content: {
                 ReaderPaneView(viewModel: viewModel)
-                    .navigationSplitViewColumnWidth(min: 880, ideal: 1020)
+                    .navigationSplitViewColumnWidth(min: 560, ideal: 760)
                     .padding(8)
                     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             } detail: {
                 SidebarView(viewModel: viewModel)
-                    .navigationSplitViewColumnWidth(min: 340, ideal: 390, max: 460)
+                    .navigationSplitViewColumnWidth(min: 260, ideal: 340, max: 440)
                     .padding(10)
                     .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
             .navigationSplitViewStyle(.balanced)
             .padding(12)
         }
-        .frame(minWidth: 1380, minHeight: 820)
+        .frame(minWidth: 1080, minHeight: 760)
         .preferredColorScheme(preferredColorScheme)
     }
 

@@ -121,7 +121,7 @@ protocol PaperRepository {
 2. Do not upload full paper by default; send necessary context only.
 3. API keys are currently persisted in local app settings (not Keychain).
 
-## Current Status (2026-02-25)
+## Current Status (2026-03-02)
 1. Implemented: three-column UI, PDF reading, selection events, translation popup, AI sidebar.
 2. Implemented: Google translation by default.
 3. Implemented: LLM providers OpenAI / DeepSeek / Kimi.
@@ -140,6 +140,13 @@ protocol PaperRepository {
 16. Implemented: app now uses in-app settings only for provider/model/key (no `.env.local` fallback).
 17. Disabled in UI: notes/comments flow (kept out of main workflow for now).
 18. Tests are currently not enabled in package targets.
+19. Implemented: Reader outline extraction and click-to-jump from PDF embedded bookmarks.
+20. Implemented: fallback inferred outline detection for PDFs without embedded bookmarks.
+21. Implemented: outline source badge (`内置目录` / `推断目录`) in reader panel.
+22. Implemented: reader outline panel is now resizable by drag handle to protect center reading area.
+23. Implemented: split layout min-width tuning for better 13-inch screen behavior.
+24. Implemented: packaging scripts now generate and embed app icon (`AppIcon.icns`) automatically.
+25. Updated demo media: refreshed README assets are `docs/demo.gif` and `docs/demo.mp4`.
 
 ## Key Interaction Decisions
 1. Reading-first layout and behavior take priority.

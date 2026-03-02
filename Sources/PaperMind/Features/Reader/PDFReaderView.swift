@@ -1,20 +1,44 @@
 import SwiftUI
 import PDFKit
 
+enum ReaderOutlineSource: String, Equatable {
+    case embedded
+    case inferred
+
+    var displayTitle: String {
+        switch self {
+        case .embedded: return "内置目录"
+        case .inferred: return "推断目录"
+        }
+    }
+}
+
+struct ReaderOutlineItem: Identifiable, Equatable {
+    let id: String
+    let title: String
+    let pageIndex: Int
+    let level: Int
+    let source: ReaderOutlineSource
+}
+
 struct PDFReaderView: NSViewRepresentable {
     let fileURL: URL
     let threadAnchors: [Note]
     let focusedThreadID: UUID?
     let focusThreadTick: Int
+    let jumpToPageIndex: Int?
+    let jumpToPageTick: Int
     var onSelectionChange: (String, Int, CGRect?, CGRect?) -> Void
     var onPageChange: (Int) -> Void
     var onThreadAnnotationTap: (UUID) -> Void
+    var onOutlineChange: ([ReaderOutlineItem]) -> Void
 
     func makeCoordinator() -> Coordinator {
         Coordinator(
             onSelectionChange: onSelectionChange,
             onPageChange: onPageChange,
-            onThreadAnnotationTap: onThreadAnnotationTap
+            onThreadAnnotationTap: onThreadAnnotationTap,
+            onOutlineChange: onOutlineChange
         )
     }
 
@@ -26,6 +50,7 @@ struct PDFReaderView: NSViewRepresentable {
         view.document = makeDocument(from: fileURL)
 
         context.coordinator.bind(to: view)
+        context.coordinator.publishOutline(document: view.document)
         context.coordinator.syncThreadAnnotations(view: view, threads: threadAnchors, focusedThreadID: focusedThreadID)
         return view
     }
@@ -35,6 +60,7 @@ struct PDFReaderView: NSViewRepresentable {
         if currentURL != fileURL.standardizedFileURL {
             nsView.document = makeDocument(from: fileURL)
         }
+        context.coordinator.publishOutline(document: nsView.document)
 
         context.coordinator.syncThreadAnnotations(view: nsView, threads: threadAnchors, focusedThreadID: focusedThreadID)
         context.coordinator.navigateIfNeeded(
@@ -42,6 +68,11 @@ struct PDFReaderView: NSViewRepresentable {
             focusThreadTick: focusThreadTick,
             focusedThreadID: focusedThreadID,
             threads: threadAnchors
+        )
+        context.coordinator.navigateToPageIfNeeded(
+            view: nsView,
+            jumpToPageIndex: jumpToPageIndex,
+            jumpToPageTick: jumpToPageTick
         )
     }
 
@@ -56,16 +87,20 @@ struct PDFReaderView: NSViewRepresentable {
         private let onSelectionChange: (String, Int, CGRect?, CGRect?) -> Void
         private let onPageChange: (Int) -> Void
         private let onThreadAnnotationTap: (UUID) -> Void
+        private let onOutlineChange: ([ReaderOutlineItem]) -> Void
         private var lastFocusThreadTick: Int = -1
+        private var lastJumpToPageTick: Int = -1
 
         init(
             onSelectionChange: @escaping (String, Int, CGRect?, CGRect?) -> Void,
             onPageChange: @escaping (Int) -> Void,
-            onThreadAnnotationTap: @escaping (UUID) -> Void
+            onThreadAnnotationTap: @escaping (UUID) -> Void,
+            onOutlineChange: @escaping ([ReaderOutlineItem]) -> Void
         ) {
             self.onSelectionChange = onSelectionChange
             self.onPageChange = onPageChange
             self.onThreadAnnotationTap = onThreadAnnotationTap
+            self.onOutlineChange = onOutlineChange
         }
 
         deinit {
@@ -184,6 +219,210 @@ struct PDFReaderView: NSViewRepresentable {
             }
 
             view.go(to: page)
+        }
+
+        func navigateToPageIfNeeded(view: PDFView, jumpToPageIndex: Int?, jumpToPageTick: Int) {
+            guard jumpToPageTick != lastJumpToPageTick else { return }
+            lastJumpToPageTick = jumpToPageTick
+
+            guard let jumpToPageIndex,
+                  let document = view.document,
+                  let page = document.page(at: jumpToPageIndex) else {
+                return
+            }
+
+            view.go(to: page)
+        }
+
+        func publishOutline(document: PDFDocument?) {
+            let items = outlineItems(from: document)
+            onOutlineChange(items)
+
+            // Some PDFs expose outline metadata slightly after initial load.
+            if items.isEmpty, let document {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                    guard let self else { return }
+                    self.onOutlineChange(self.outlineItems(from: document))
+                }
+            }
+        }
+
+        private func outlineItems(from document: PDFDocument?) -> [ReaderOutlineItem] {
+            guard let document else { return [] }
+
+            let embeddedItems = embeddedOutlineItems(from: document)
+            if !embeddedItems.isEmpty {
+                return embeddedItems
+            }
+            return inferredOutlineItems(from: document)
+        }
+
+        private func embeddedOutlineItems(from document: PDFDocument) -> [ReaderOutlineItem] {
+            guard let root = document.outlineRoot else {
+                return []
+            }
+
+            var items: [ReaderOutlineItem] = []
+
+            func traverse(item: PDFOutline?, level: Int) {
+                guard let item else { return }
+
+                let title = (item.label ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                if !title.isEmpty,
+                   let page = outlinePage(for: item),
+                   document.index(for: page) >= 0 {
+                    let pageIndex = document.index(for: page)
+                    items.append(
+                        ReaderOutlineItem(
+                            id: "\(level)-\(pageIndex)-\(title)",
+                            title: title,
+                            pageIndex: pageIndex,
+                            level: level,
+                            source: .embedded
+                        )
+                    )
+                }
+
+                for childIndex in 0..<item.numberOfChildren {
+                    traverse(item: item.child(at: childIndex), level: level + 1)
+                }
+            }
+
+            for rootIndex in 0..<root.numberOfChildren {
+                traverse(item: root.child(at: rootIndex), level: 0)
+            }
+
+            return items
+        }
+
+        private func inferredOutlineItems(from document: PDFDocument) -> [ReaderOutlineItem] {
+            let numberedHeadingRegex = try! NSRegularExpression(
+                pattern: #"^\s*(\d{1,2}(?:\.\d+){0,3})[\.\)]?\s+([^\n]{2,100})\s*$"#
+            )
+            let romanHeadingRegex = try! NSRegularExpression(
+                pattern: #"^\s*([IVX]{1,8})[\.\)]\s+([^\n]{2,100})\s*$"#,
+                options: [.caseInsensitive]
+            )
+            let englishSectionRegex = try! NSRegularExpression(
+                pattern: #"^\s*(Abstract|Introduction|Background|Related Work|Method(?:ology)?|Approach|Experiments?|Results?|Discussion|Conclusion|Conclusions|References|Acknowledg(e)?ments?|Appendix(?:\s+[A-Z0-9])?)\s*[:.]?\s*$"#,
+                options: [.caseInsensitive]
+            )
+            let chineseSectionRegex = try! NSRegularExpression(
+                pattern: #"^\s*(摘要|引言|前言|背景|相关工作|方法|实验|结果|讨论|结论|参考文献|附录[A-Z0-9一二三四五六七八九十]*)\s*$"#
+            )
+            let tocLineRegex = try! NSRegularExpression(pattern: #"\.{3,}\s*\d+\s*$"#)
+            var items: [ReaderOutlineItem] = []
+            var seenTitles = Set<String>()
+
+            for pageIndex in 0..<document.pageCount {
+                guard let page = document.page(at: pageIndex),
+                      let text = page.string else { continue }
+
+                let lines = text
+                    .components(separatedBy: .newlines)
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty && $0.count <= 120 }
+
+                for (lineIndex, line) in lines.enumerated() {
+                    let normalized = line
+                        .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard normalized.count >= 2 else { continue }
+
+                    let nsRange = NSRange(location: 0, length: normalized.utf16.count)
+                    if tocLineRegex.firstMatch(in: normalized, options: [], range: nsRange) != nil {
+                        continue
+                    }
+
+                    let isNumbered = numberedHeadingRegex.firstMatch(in: normalized, options: [.anchored], range: nsRange) != nil
+                    let isRoman = romanHeadingRegex.firstMatch(in: normalized, options: [.anchored], range: nsRange) != nil
+                    let isEnglishSection = englishSectionRegex.firstMatch(in: normalized, options: [.anchored], range: nsRange) != nil
+                    let isChineseSection = chineseSectionRegex.firstMatch(in: normalized, options: [.anchored], range: nsRange) != nil
+
+                    guard isNumbered || isRoman || isEnglishSection || isChineseSection else { continue }
+                    guard inferredHeadingScore(
+                        line: normalized,
+                        lineIndex: lineIndex,
+                        isNumbered: isNumbered || isRoman,
+                        isNamedSection: isEnglishSection || isChineseSection
+                    ) >= 3 else {
+                        continue
+                    }
+
+                    let canonical = normalized
+                        .lowercased()
+                        .replacingOccurrences(of: #"[[:punct:]\s]+"#, with: "", options: .regularExpression)
+                    guard !seenTitles.contains(canonical) else { continue }
+                    seenTitles.insert(canonical)
+
+                    let level = inferredLevel(from: normalized)
+                    items.append(
+                        ReaderOutlineItem(
+                            id: "inferred-\(pageIndex)-\(items.count)",
+                            title: normalized,
+                            pageIndex: pageIndex,
+                            level: level,
+                            source: .inferred
+                        )
+                    )
+
+                    if items.count >= 120 {
+                        return items
+                    }
+                }
+            }
+            return compactInferredItems(items)
+        }
+
+        private func inferredLevel(from title: String) -> Int {
+            let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let match = trimmed.range(of: #"^\d+(?:\.\d+){1,}"#, options: .regularExpression) {
+                let prefix = String(trimmed[match])
+                return max(0, prefix.split(separator: ".").count - 1)
+            }
+            return 0
+        }
+
+        private func inferredHeadingScore(
+            line: String,
+            lineIndex: Int,
+            isNumbered: Bool,
+            isNamedSection: Bool
+        ) -> Int {
+            var score = 0
+            if lineIndex <= 20 { score += 3 }
+            if lineIndex <= 40 { score += 1 }
+            if isNumbered { score += 3 }
+            if isNamedSection { score += 2 }
+            if line.count <= 72 { score += 1 }
+            if line.range(of: #"[=+\-*/<>]{2,}|[_]{2,}"#, options: .regularExpression) != nil { score -= 3 }
+            if line.range(of: #"[。！？!?;；:]$"#, options: .regularExpression) != nil { score -= 2 }
+            if line.range(of: #"[a-z]{4,}\s+[a-z]{4,}\s+[a-z]{4,}"#, options: .regularExpression) != nil { score -= 2 }
+            return score
+        }
+
+        private func compactInferredItems(_ items: [ReaderOutlineItem]) -> [ReaderOutlineItem] {
+            guard items.count > 2 else { return items }
+            var compacted: [ReaderOutlineItem] = []
+            var lastPageIndex: Int?
+            for item in items {
+                if let lastPageIndex, item.pageIndex == lastPageIndex, item.level > 1 {
+                    continue
+                }
+                compacted.append(item)
+                lastPageIndex = item.pageIndex
+            }
+            return compacted
+        }
+
+        private func outlinePage(for item: PDFOutline) -> PDFPage? {
+            if let page = item.destination?.page {
+                return page
+            }
+            if let action = item.action as? PDFActionGoTo {
+                return action.destination.page
+            }
+            return nil
         }
     }
 }

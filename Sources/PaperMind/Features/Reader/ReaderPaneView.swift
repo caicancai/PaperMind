@@ -4,33 +4,79 @@ struct ReaderPaneView: View {
     @ObservedObject var viewModel: AppViewModel
     @State private var selectionRect: CGRect?
     @State private var showFullTranslation: Bool = false
+    @State private var outlineItems: [ReaderOutlineItem] = []
+    @State private var showOutlinePanel: Bool = true
+    @State private var outlinePanelWidth: CGFloat = 220
+    @State private var outlineDragStartWidth: CGFloat?
+    @State private var outlineJumpPageIndex: Int?
+    @State private var outlineJumpTick: Int = 0
 
     var body: some View {
         VStack(spacing: 10) {
             if let paper = viewModel.selectedPaper {
-                GeometryReader { proxy in
-                    ZStack(alignment: .topLeading) {
-                        PDFReaderView(
-                            fileURL: paper.fileURL,
-                            threadAnchors: [],
-                            focusedThreadID: nil,
-                            focusThreadTick: 0
-                        ) { text, pageIndex, viewRect, pageRect in
-                            selectionRect = viewRect
-                            viewModel.handleSelectionChanged(text: text, pageIndex: pageIndex, anchorRect: pageRect)
-                        } onPageChange: { pageIndex in
-                            viewModel.currentReaderPageIndex = pageIndex
-                        } onThreadAnnotationTap: { threadID in
-                            _ = threadID
-                        }
+                VStack(spacing: 8) {
+                    readerHeader(paper: paper)
 
-                        if viewModel.currentSelection != nil {
-                            floatingTranslationCard
-                                .frame(width: popupWidth)
-                                .position(popupPosition(in: proxy.size, popupWidth: popupWidth, popupHeight: popupHeight))
-                                .transition(.opacity)
-                        }
+                    GeometryReader { proxy in
+                        let clampedOutlineWidth = clampedOutlineWidth(for: proxy.size.width)
+                        HStack(spacing: 8) {
+                            if showOutlinePanel {
+                                outlinePanel
+                                    .frame(width: clampedOutlineWidth)
 
+                                Rectangle()
+                                    .fill(Color.primary.opacity(0.08))
+                                    .frame(width: 4)
+                                    .overlay(
+                                        Capsule()
+                                            .fill(Color.primary.opacity(0.22))
+                                            .frame(width: 2, height: 42)
+                                    )
+                                    .contentShape(Rectangle())
+                                    .gesture(
+                                        DragGesture()
+                                            .onChanged { value in
+                                                let range = outlineWidthRange(totalWidth: proxy.size.width)
+                                                let base = outlineDragStartWidth ?? outlinePanelWidth
+                                                if outlineDragStartWidth == nil {
+                                                    outlineDragStartWidth = outlinePanelWidth
+                                                }
+                                                let next = base + value.translation.width
+                                                outlinePanelWidth = min(max(next, range.lowerBound), range.upperBound)
+                                            }
+                                            .onEnded { _ in
+                                                outlineDragStartWidth = nil
+                                            }
+                                    )
+                            }
+
+                            ZStack(alignment: .topLeading) {
+                                PDFReaderView(
+                                    fileURL: paper.fileURL,
+                                    threadAnchors: [],
+                                    focusedThreadID: nil,
+                                    focusThreadTick: 0,
+                                    jumpToPageIndex: outlineJumpPageIndex,
+                                    jumpToPageTick: outlineJumpTick
+                                ) { text, pageIndex, viewRect, pageRect in
+                                    selectionRect = viewRect
+                                    viewModel.handleSelectionChanged(text: text, pageIndex: pageIndex, anchorRect: pageRect)
+                                } onPageChange: { pageIndex in
+                                    viewModel.currentReaderPageIndex = pageIndex
+                                } onThreadAnnotationTap: { threadID in
+                                    _ = threadID
+                                } onOutlineChange: { items in
+                                    outlineItems = items
+                                }
+
+                                if viewModel.currentSelection != nil {
+                                    floatingTranslationCard
+                                        .frame(width: popupWidth)
+                                        .position(popupPosition(in: proxy.size, popupWidth: popupWidth, popupHeight: popupHeight))
+                                        .transition(.opacity)
+                                }
+                            }
+                        }
                     }
                     .animation(.spring(response: 0.24, dampingFraction: 0.88), value: selectionRect)
                     .animation(.easeOut(duration: 0.18), value: viewModel.currentSelection != nil)
@@ -50,6 +96,14 @@ struct ReaderPaneView: View {
         .onChange(of: viewModel.selectedTextPreview) { _ in
             showFullTranslation = false
         }
+        .onChange(of: viewModel.selectedPaperID) { _ in
+            outlineItems = []
+            showOutlinePanel = true
+            outlinePanelWidth = 220
+            outlineDragStartWidth = nil
+            outlineJumpPageIndex = nil
+            outlineJumpTick = 0
+        }
     }
 
     private var popupWidth: CGFloat {
@@ -58,6 +112,116 @@ struct ReaderPaneView: View {
 
     private var popupHeight: CGFloat {
         240
+    }
+
+    private func outlineWidthRange(totalWidth: CGFloat) -> ClosedRange<CGFloat> {
+        let minWidth: CGFloat = totalWidth < 980 ? 170 : 190
+        let maxWidth: CGFloat = min(340, max(minWidth + 20, totalWidth * 0.36))
+        return minWidth...maxWidth
+    }
+
+    private func clampedOutlineWidth(for totalWidth: CGFloat) -> CGFloat {
+        let range = outlineWidthRange(totalWidth: totalWidth)
+        return min(max(outlinePanelWidth, range.lowerBound), range.upperBound)
+    }
+
+    private func readerHeader(paper: Paper) -> some View {
+        HStack(spacing: 10) {
+            Text(paper.title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+
+            Spacer()
+
+            Button {
+                showOutlinePanel.toggle()
+            } label: {
+                Label(showOutlinePanel ? "隐藏目录" : "显示目录", systemImage: "sidebar.left")
+            }
+            .buttonStyle(.bordered)
+            .font(.caption)
+        }
+    }
+
+    private var outlinePanel: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("目录")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                if let source = outlineItems.first?.source {
+                    Text(source.displayTitle)
+                        .font(.caption2)
+                        .foregroundStyle(source == .embedded ? Color.secondary : Color.orange)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(
+                            (source == .embedded ? Color.gray.opacity(0.16) : Color.orange.opacity(0.16)),
+                            in: Capsule()
+                        )
+                }
+                Spacer()
+                Text("\(outlineItems.count)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+            if outlineItems.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("未检测到目录")
+                        .font(.callout)
+                    Text("这篇 PDF 可能没有嵌入目录书签，且未识别出稳定章节标题。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(10)
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 4) {
+                        ForEach(outlineItems) { item in
+                            Button {
+                                outlineJumpPageIndex = item.pageIndex
+                                outlineJumpTick += 1
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Text(item.title)
+                                        .font(.system(size: 12, weight: activeOutlineItemID == item.id ? .semibold : .regular))
+                                        .lineLimit(2)
+                                        .multilineTextAlignment(.leading)
+                                        .foregroundStyle(.primary)
+
+                                    Spacer(minLength: 4)
+
+                                    Text("P\(item.pageIndex + 1)")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .padding(.leading, CGFloat(item.level) * 12 + 8)
+                                .padding(.trailing, 8)
+                                .padding(.vertical, 6)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                        .fill(activeOutlineItemID == item.id ? Color.accentColor.opacity(0.14) : .clear)
+                                )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(4)
+                }
+            }
+        }
+        .padding(10)
+        .background(Color.white.opacity(0.35), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private var activeOutlineItemID: String? {
+        outlineItems
+            .filter { $0.pageIndex <= viewModel.currentReaderPageIndex }
+            .last?
+            .id
     }
 
     private var floatingTranslationCard: some View {

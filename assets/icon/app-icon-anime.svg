@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#7ad6ff"/>
+      <stop offset="52%" stop-color="#7a8bff"/>
+      <stop offset="100%" stop-color="#ff8fc0"/>
+    </linearGradient>
+    <radialGradient id="shine" cx="0.25" cy="0.2" r="0.75">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.68"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="hair" x1="0.1" y1="0.1" x2="0.9" y2="0.9">
+      <stop offset="0%" stop-color="#25293f"/>
+      <stop offset="100%" stop-color="#0f1226"/>
+    </linearGradient>
+    <linearGradient id="paper" x1="0" y1="0" x2="0.8" y2="1">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#e8f1ff"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="64" y="64" width="896" height="896" rx="200" fill="url(#bg)"/>
+  <rect x="64" y="64" width="896" height="896" rx="200" fill="url(#shine)"/>
+
+  <path d="M240 430c20-170 124-256 274-256s255 90 270 254c10 108-8 216-75 293-55 64-128 95-197 95s-142-31-197-95c-67-78-85-183-75-291z" fill="url(#hair)"/>
+  <ellipse cx="512" cy="545" rx="250" ry="230" fill="#ffe7ef"/>
+
+  <ellipse cx="420" cy="538" rx="40" ry="52" fill="#ffffff"/>
+  <ellipse cx="604" cy="538" rx="40" ry="52" fill="#ffffff"/>
+  <ellipse cx="420" cy="548" rx="24" ry="30" fill="#4152dd"/>
+  <ellipse cx="604" cy="548" rx="24" ry="30" fill="#4152dd"/>
+  <circle cx="430" cy="536" r="8" fill="#ffffff"/>
+  <circle cx="614" cy="536" r="8" fill="#ffffff"/>
+  <path d="M445 665c30 28 104 28 134 0" fill="none" stroke="#de5f8f" stroke-width="18" stroke-linecap="round"/>
+
+  <rect x="386" y="658" width="250" height="198" rx="34" fill="url(#paper)" transform="rotate(-11 511 757)"/>
+  <path d="M428 721h155M421 758h166M428 795h129" stroke="#9ab4ea" stroke-width="12" stroke-linecap="round" transform="rotate(-11 511 757)"/>
+  <text x="507" y="777" text-anchor="middle" font-size="108" font-weight="700" font-family="Avenir Next, Helvetica, Arial, sans-serif" fill="#5b6cf0" transform="rotate(-11 511 757)">P</text>
+
+  <path d="M258 246l22 48 48 22-48 22-22 48-22-48-48-22 48-22z" fill="#fff2aa" opacity="0.9"/>
+  <path d="M794 270l16 34 34 16-34 16-16 34-16-34-34-16 34-16z" fill="#fff4ba" opacity="0.9"/>
+  <path d="M812 664l18 38 38 18-38 18-18 38-18-38-38-18 38-18z" fill="#ffe6fb" opacity="0.85"/>
+</svg>

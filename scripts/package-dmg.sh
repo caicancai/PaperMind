@@ -60,12 +60,16 @@ STAGE_DIR="$ROOT_DIR/release/stage"
 APP_DIR="$STAGE_DIR/$APP_NAME.app"
 DMG_ROOT="$STAGE_DIR/dmg-root"
 OUT_DMG="$ROOT_DIR/release/${APP_NAME}-${VERSION}.dmg"
+ICON_ICNS="$ROOT_DIR/Resources/AppIcon.icns"
+
+"$ROOT_DIR/scripts/generate-app-icon.sh" "$ROOT_DIR/assets/icon/app-icon-anime.svg" "$ROOT_DIR/Resources"
 
 rm -rf "$STAGE_DIR"
 mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources" "$DMG_ROOT"
 
 cp "$BINARY_PATH" "$APP_DIR/Contents/MacOS/$APP_NAME"
 chmod +x "$APP_DIR/Contents/MacOS/$APP_NAME"
+cp "$ICON_ICNS" "$APP_DIR/Contents/Resources/AppIcon.icns"
 
 cat > "$APP_DIR/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -78,6 +82,8 @@ cat > "$APP_DIR/Contents/Info.plist" <<EOF
   <string>$APP_NAME</string>
   <key>CFBundleIdentifier</key>
   <string>com.caicancai.$APP_NAME</string>
+  <key>CFBundleIconFile</key>
+  <string>AppIcon</string>
   <key>CFBundleName</key>
   <string>$APP_NAME</string>
   <key>CFBundlePackageType</key>
