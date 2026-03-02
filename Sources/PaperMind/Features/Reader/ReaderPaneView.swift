@@ -8,6 +8,8 @@ struct ReaderPaneView: View {
     @State private var showOutlinePanel: Bool = true
     @State private var outlinePanelWidth: CGFloat = 220
     @State private var outlineDragStartWidth: CGFloat?
+    @State private var outlineJumpItemID: String?
+    @State private var outlineSelectedItemID: String?
     @State private var outlineJumpPageIndex: Int?
     @State private var outlineJumpTick: Int = 0
 
@@ -57,12 +59,19 @@ struct ReaderPaneView: View {
                                     focusedThreadID: nil,
                                     focusThreadTick: 0,
                                     jumpToPageIndex: outlineJumpPageIndex,
-                                    jumpToPageTick: outlineJumpTick
+                                    jumpToPageTick: outlineJumpTick,
+                                    jumpToOutlineItemID: outlineJumpItemID,
+                                    jumpToOutlineTick: outlineJumpTick
                                 ) { text, pageIndex, viewRect, pageRect in
                                     selectionRect = viewRect
                                     viewModel.handleSelectionChanged(text: text, pageIndex: pageIndex, anchorRect: pageRect)
                                 } onPageChange: { pageIndex in
                                     viewModel.currentReaderPageIndex = pageIndex
+                                    if let selectedID = outlineSelectedItemID,
+                                       let selectedItem = outlineItems.first(where: { $0.id == selectedID }),
+                                       selectedItem.pageIndex != pageIndex {
+                                        outlineSelectedItemID = nil
+                                    }
                                 } onThreadAnnotationTap: { threadID in
                                     _ = threadID
                                 } onOutlineChange: { items in
@@ -101,6 +110,8 @@ struct ReaderPaneView: View {
             showOutlinePanel = true
             outlinePanelWidth = 220
             outlineDragStartWidth = nil
+            outlineJumpItemID = nil
+            outlineSelectedItemID = nil
             outlineJumpPageIndex = nil
             outlineJumpTick = 0
         }
@@ -181,6 +192,8 @@ struct ReaderPaneView: View {
                     LazyVStack(alignment: .leading, spacing: 4) {
                         ForEach(outlineItems) { item in
                             Button {
+                                outlineSelectedItemID = item.id
+                                outlineJumpItemID = item.source == .embedded ? item.id : nil
                                 outlineJumpPageIndex = item.pageIndex
                                 outlineJumpTick += 1
                             } label: {
@@ -218,7 +231,11 @@ struct ReaderPaneView: View {
     }
 
     private var activeOutlineItemID: String? {
-        outlineItems
+        if let selectedID = outlineSelectedItemID,
+           outlineItems.contains(where: { $0.id == selectedID }) {
+            return selectedID
+        }
+        return outlineItems
             .filter { $0.pageIndex <= viewModel.currentReaderPageIndex }
             .last?
             .id

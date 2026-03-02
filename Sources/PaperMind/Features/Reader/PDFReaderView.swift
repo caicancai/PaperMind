@@ -28,6 +28,8 @@ struct PDFReaderView: NSViewRepresentable {
     let focusThreadTick: Int
     let jumpToPageIndex: Int?
     let jumpToPageTick: Int
+    let jumpToOutlineItemID: String?
+    let jumpToOutlineTick: Int
     var onSelectionChange: (String, Int, CGRect?, CGRect?) -> Void
     var onPageChange: (Int) -> Void
     var onThreadAnnotationTap: (UUID) -> Void
@@ -72,7 +74,13 @@ struct PDFReaderView: NSViewRepresentable {
         context.coordinator.navigateToPageIfNeeded(
             view: nsView,
             jumpToPageIndex: jumpToPageIndex,
-            jumpToPageTick: jumpToPageTick
+            jumpToPageTick: jumpToPageTick,
+            hasOutlineTarget: jumpToOutlineItemID != nil
+        )
+        context.coordinator.navigateToOutlineIfNeeded(
+            view: nsView,
+            jumpToOutlineItemID: jumpToOutlineItemID,
+            jumpToOutlineTick: jumpToOutlineTick
         )
     }
 
@@ -90,6 +98,8 @@ struct PDFReaderView: NSViewRepresentable {
         private let onOutlineChange: ([ReaderOutlineItem]) -> Void
         private var lastFocusThreadTick: Int = -1
         private var lastJumpToPageTick: Int = -1
+        private var lastJumpToOutlineTick: Int = -1
+        private var outlineDestinationByID: [String: PDFDestination] = [:]
 
         init(
             onSelectionChange: @escaping (String, Int, CGRect?, CGRect?) -> Void,
@@ -221,9 +231,15 @@ struct PDFReaderView: NSViewRepresentable {
             view.go(to: page)
         }
 
-        func navigateToPageIfNeeded(view: PDFView, jumpToPageIndex: Int?, jumpToPageTick: Int) {
+        func navigateToPageIfNeeded(
+            view: PDFView,
+            jumpToPageIndex: Int?,
+            jumpToPageTick: Int,
+            hasOutlineTarget: Bool
+        ) {
             guard jumpToPageTick != lastJumpToPageTick else { return }
             lastJumpToPageTick = jumpToPageTick
+            guard !hasOutlineTarget else { return }
 
             guard let jumpToPageIndex,
                   let document = view.document,
@@ -234,53 +250,88 @@ struct PDFReaderView: NSViewRepresentable {
             view.go(to: page)
         }
 
+        func navigateToOutlineIfNeeded(view: PDFView, jumpToOutlineItemID: String?, jumpToOutlineTick: Int) {
+            guard jumpToOutlineTick != lastJumpToOutlineTick else { return }
+            lastJumpToOutlineTick = jumpToOutlineTick
+            guard let jumpToOutlineItemID,
+                  let destination = outlineDestinationByID[jumpToOutlineItemID] else {
+                return
+            }
+            if let page = destination.page {
+                let point = destination.point
+                let pageBounds = page.bounds(for: .mediaBox)
+                let targetPoint = CGPoint(
+                    x: 0,
+                    y: min(pageBounds.maxY - 24, max(0, point.y + 140))
+                )
+                let targetDestination = PDFDestination(page: page, at: targetPoint)
+                view.go(to: targetDestination)
+            } else {
+                view.go(to: destination)
+            }
+        }
+
         func publishOutline(document: PDFDocument?) {
-            let items = outlineItems(from: document)
+            let payload = outlinePayload(from: document)
+            let items = payload.items
+            outlineDestinationByID = payload.destinations
             onOutlineChange(items)
 
             // Some PDFs expose outline metadata slightly after initial load.
             if items.isEmpty, let document {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
                     guard let self else { return }
-                    self.onOutlineChange(self.outlineItems(from: document))
+                    let retryPayload = self.outlinePayload(from: document)
+                    self.outlineDestinationByID = retryPayload.destinations
+                    self.onOutlineChange(retryPayload.items)
                 }
             }
         }
 
-        private func outlineItems(from document: PDFDocument?) -> [ReaderOutlineItem] {
-            guard let document else { return [] }
+        private func outlinePayload(from document: PDFDocument?) -> (items: [ReaderOutlineItem], destinations: [String: PDFDestination]) {
+            guard let document else { return (items: [], destinations: [:]) }
 
-            let embeddedItems = embeddedOutlineItems(from: document)
-            if !embeddedItems.isEmpty {
-                return embeddedItems
+            let embedded = embeddedOutlineItems(from: document)
+            if !embedded.items.isEmpty {
+                return embedded
             }
-            return inferredOutlineItems(from: document)
+            let inferred = inferredOutlineItems(from: document)
+            return (items: inferred, destinations: [:])
         }
 
-        private func embeddedOutlineItems(from document: PDFDocument) -> [ReaderOutlineItem] {
+        private func embeddedOutlineItems(from document: PDFDocument) -> (items: [ReaderOutlineItem], destinations: [String: PDFDestination]) {
             guard let root = document.outlineRoot else {
-                return []
+                return (items: [], destinations: [:])
             }
 
             var items: [ReaderOutlineItem] = []
+            var destinations: [String: PDFDestination] = [:]
 
             func traverse(item: PDFOutline?, level: Int) {
                 guard let item else { return }
 
                 let title = (item.label ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
                 if !title.isEmpty,
-                   let page = outlinePage(for: item),
+                   let destination = outlineDestination(for: item),
+                   let page = destination.page,
                    document.index(for: page) >= 0 {
                     let pageIndex = document.index(for: page)
+                    let id = makeEmbeddedOutlineID(
+                        title: title,
+                        level: level,
+                        pageIndex: pageIndex,
+                        point: destination.point
+                    )
                     items.append(
                         ReaderOutlineItem(
-                            id: "\(level)-\(pageIndex)-\(title)",
+                            id: id,
                             title: title,
                             pageIndex: pageIndex,
                             level: level,
                             source: .embedded
                         )
                     )
+                    destinations[id] = destination
                 }
 
                 for childIndex in 0..<item.numberOfChildren {
@@ -292,7 +343,21 @@ struct PDFReaderView: NSViewRepresentable {
                 traverse(item: root.child(at: rootIndex), level: 0)
             }
 
-            return items
+            return (items: items, destinations: destinations)
+        }
+
+        private func makeEmbeddedOutlineID(
+            title: String,
+            level: Int,
+            pageIndex: Int,
+            point: CGPoint
+        ) -> String {
+            let normalizedTitle = title
+                .lowercased()
+                .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .replacingOccurrences(of: #"[^a-z0-9\u4e00-\u9fa5 ]+"#, with: "", options: .regularExpression)
+            return "embedded-\(pageIndex)-\(level)-\(Int(point.x.rounded()))-\(Int(point.y.rounded()))-\(normalizedTitle)"
         }
 
         private func inferredOutlineItems(from document: PDFDocument) -> [ReaderOutlineItem] {
@@ -415,12 +480,12 @@ struct PDFReaderView: NSViewRepresentable {
             return compacted
         }
 
-        private func outlinePage(for item: PDFOutline) -> PDFPage? {
-            if let page = item.destination?.page {
-                return page
+        private func outlineDestination(for item: PDFOutline) -> PDFDestination? {
+            if let destination = item.destination {
+                return destination
             }
             if let action = item.action as? PDFActionGoTo {
-                return action.destination.page
+                return action.destination
             }
             return nil
         }
