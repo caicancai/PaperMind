@@ -5,6 +5,21 @@ A Swift/macOS paper-reading assistant focused on three core workflows:
 - Selection-based translation (Google Translate by default)
 - Discuss with AI in a right sidebar (including formula explanation)
 
+<p align="center">
+  <a href="https://github.com/caicancai/PaperMind/releases"><img src="https://img.shields.io/badge/Release-GitHub-blue?logo=github" alt="Release" /></a>
+  <a href="https://github.com/caicancai/PaperMind/releases/latest"><img src="https://img.shields.io/badge/Downloads-Latest%20Assets-2ea44f?logo=github" alt="Downloads" /></a>
+  <a href="https://github.com/caicancai/PaperMind/issues"><img src="https://img.shields.io/badge/Feedback-Issues-orange?logo=github" alt="Issues" /></a>
+  <img src="https://img.shields.io/badge/platform-macOS%2013%2B-blue" alt="Platform" />
+  <img src="https://img.shields.io/badge/swift-5.10%2B-orange" alt="Swift" />
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License" /></a>
+</p>
+
+## Quick Links
+
+| Release | Downloads | Feedback |
+|---|---|---|
+| [GitHub Releases](https://github.com/caicancai/PaperMind/releases) | [Latest Release Assets](https://github.com/caicancai/PaperMind/releases/latest) | [Open an Issue](https://github.com/caicancai/PaperMind/issues) |
+
 ## Current Features
 
 - Paper Library
@@ -113,6 +128,12 @@ If provider or key is unavailable, the app reports configuration errors directly
 - Test target is currently disabled (project currently maintained with `swift build` flow)
 - Notes/comments are temporarily disabled in UI
  - API keys are stored locally in app settings (not encrypted by Keychain)
+
+## Feedback
+
+Issues and feedback are welcome. If you encounter bugs or have feature suggestions, please open an issue:
+
+- https://github.com/caicancai/PaperMind/issues
 
 ## License
 

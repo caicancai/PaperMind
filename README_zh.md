@@ -5,6 +5,21 @@
 - 划词翻译（默认 Google 翻译）
 - 侧边栏和 AI 讨论（支持选区问答与公式解释）
 
+<p align="center">
+  <a href="https://github.com/caicancai/PaperMind/releases"><img src="https://img.shields.io/badge/Release-GitHub-blue?logo=github" alt="Release" /></a>
+  <a href="https://github.com/caicancai/PaperMind/releases/latest"><img src="https://img.shields.io/badge/Downloads-Latest%20Assets-2ea44f?logo=github" alt="Downloads" /></a>
+  <a href="https://github.com/caicancai/PaperMind/issues"><img src="https://img.shields.io/badge/Feedback-Issues-orange?logo=github" alt="Issues" /></a>
+  <img src="https://img.shields.io/badge/platform-macOS%2013%2B-blue" alt="Platform" />
+  <img src="https://img.shields.io/badge/swift-5.10%2B-orange" alt="Swift" />
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License" /></a>
+</p>
+
+## 快速入口
+
+| Release | Downloads | 反馈 |
+|---|---|---|
+| [GitHub Releases](https://github.com/caicancai/PaperMind/releases) | [最新版本资源](https://github.com/caicancai/PaperMind/releases/latest) | [提交 Issue](https://github.com/caicancai/PaperMind/issues) |
+
 ## 当前功能
 
 - 论文库
@@ -160,6 +175,12 @@ open .build/debug/PaperMind
 - 当前测试目标未启用（当前仅维护 `swift build` 流程）
 - 笔记/评论功能已在 UI 层临时下线
 - API Key 当前保存在本地配置（未使用 Keychain 加密）
+
+## 反馈与 Issue
+
+欢迎反馈问题和功能建议。如果遇到 bug 或有改进想法，请在 GitHub 提交 Issue：
+
+- https://github.com/caicancai/PaperMind/issues
 
 ## License
 
