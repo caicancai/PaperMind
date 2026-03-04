@@ -2,6 +2,24 @@
 
 All notable changes to this project are documented in this file.
 
+## [v0.0.3] - 2026-03-04
+
+### Changed
+- Improved translation text handling and rendering for better readability:
+  - Normalize selected PDF text before translation to reduce hard line-break noise.
+  - Render floating-card translation as a continuous text block with expand/collapse.
+- Strengthened sidebar layout behavior in narrow non-fullscreen windows:
+  - Raised `NavigationSplitView` detail-column minimum width.
+  - Added adaptive "思考模式" layout fallback for constrained widths.
+
+### Fixed
+- Fixed awkward multi-line translation display where content could appear fragmented.
+- Fixed sidebar header artifacts in non-fullscreen mode caused by width compression.
+- Replaced segmented pickers in key areas with stable custom segmented controls:
+  - Sidebar "思考模式"
+  - AI settings "默认 Provider"
+- Normalized picker labeling and accessibility for menu-style selectors.
+
 ## [v0.0.2] - 2026-03-02
 
 ### Added
@@ -40,4 +58,3 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 - Chat panel UX improvements and streaming auto-follow behavior.
-

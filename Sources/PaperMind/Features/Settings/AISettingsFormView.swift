@@ -15,12 +15,7 @@ struct AISettingsFormView: View {
                     Text("默认 Provider")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Picker("默认 Provider", selection: $viewModel.aiProvider) {
-                        ForEach(AIProvider.allCases) { provider in
-                            Text(provider.displayName).tag(provider)
-                        }
-                    }
-                    .pickerStyle(.segmented)
+                    defaultProviderSelector
                 }
 
                 GroupBox {
@@ -203,5 +198,39 @@ struct AISettingsFormView: View {
 
     private var detailFill: Color {
         colorScheme == .dark ? Color.black.opacity(0.24) : Color.white.opacity(0.74)
+    }
+
+    private var defaultProviderSelector: some View {
+        HStack(spacing: 4) {
+            ForEach(AIProvider.allCases) { provider in
+                Button {
+                    viewModel.aiProvider = provider
+                } label: {
+                    Text(provider.displayName)
+                        .font(.system(size: 12.5, weight: .semibold))
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                        .foregroundStyle(viewModel.aiProvider == provider ? Color.white : Color.secondary)
+                        .background(
+                            Capsule()
+                                .fill(
+                                    viewModel.aiProvider == provider
+                                    ? Color(red: 0.12, green: 0.48, blue: 0.92)
+                                    : Color.clear
+                                )
+                        )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(provider.displayName)
+            }
+        }
+        .padding(3)
+        .background(
+            Capsule()
+                .fill(colorScheme == .dark ? Color.white.opacity(0.12) : Color.black.opacity(0.08))
+        )
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("默认 Provider")
     }
 }

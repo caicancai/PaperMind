@@ -263,7 +263,7 @@ struct ReaderPaneView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
 
-                Picker("目标语言", selection: Binding(
+                Picker("", selection: Binding(
                     get: { viewModel.translationTargetLanguage },
                     set: { newValue in
                         Task { await viewModel.updateTranslationTargetLanguage(newValue) }
@@ -275,6 +275,8 @@ struct ReaderPaneView: View {
                     Text("한국어").tag("ko")
                 }
                 .pickerStyle(.menu)
+                .labelsHidden()
+                .accessibilityLabel("目标语言")
                 .font(.caption)
 
                 Spacer()
@@ -345,38 +347,19 @@ struct ReaderPaneView: View {
 
     @ViewBuilder
     private var translationResultView: some View {
-        let paragraphs = normalizedTranslationParagraphs(viewModel.translationResult)
-        let isLong = viewModel.translationResult.count > 280 || paragraphs.count > 3
-        let visibleParagraphs = showFullTranslation ? paragraphs : Array(paragraphs.prefix(3))
+        let normalized = normalizedTranslationText(viewModel.translationResult)
+        let isLong = normalized.count > 280
+        let displayedText = showFullTranslation ? normalized : String(normalized.prefix(280))
 
         VStack(alignment: .leading, spacing: 6) {
-            ScrollViewReader { proxy in
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 6) {
-                        ForEach(Array(visibleParagraphs.enumerated()), id: \.offset) { index, paragraph in
-                            Text(paragraph)
-                                .font(.callout)
-                                .textSelection(.enabled)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 6)
-                                .background(Color.white.opacity(0.45), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-                                .id(index)
-                        }
-                    }
-                }
-                .onChange(of: viewModel.translationResult) { _ in
-                    guard let last = visibleParagraphs.indices.last else { return }
-                    withAnimation(.easeOut(duration: 0.16)) {
-                        proxy.scrollTo(last, anchor: .bottom)
-                    }
-                }
-                .onChange(of: showFullTranslation) { _ in
-                    guard let last = visibleParagraphs.indices.last else { return }
-                    withAnimation(.easeOut(duration: 0.16)) {
-                        proxy.scrollTo(last, anchor: .bottom)
-                    }
-                }
+            ScrollView {
+                Text(isLong && !showFullTranslation ? "\(displayedText)..." : displayedText)
+                    .font(.callout)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
+                    .background(Color.white.opacity(0.45), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
             }
             .frame(maxHeight: showFullTranslation ? 180 : 120)
 
@@ -391,13 +374,19 @@ struct ReaderPaneView: View {
         }
     }
 
-    private func normalizedTranslationParagraphs(_ text: String) -> [String] {
+    private func normalizedTranslationText(_ text: String) -> String {
         let normalized = text.replacingOccurrences(of: "\r\n", with: "\n")
         let paragraphs = normalized
-            .components(separatedBy: "\n")
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .components(separatedBy: "\n\n")
+            .map { paragraph in
+                paragraph
+                    .components(separatedBy: "\n")
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty }
+                    .joined(separator: " ")
+            }
             .filter { !$0.isEmpty }
-        return paragraphs.isEmpty ? [normalized] : paragraphs
+        return paragraphs.joined(separator: "\n\n")
     }
 
     private func popupPosition(in size: CGSize, popupWidth: CGFloat, popupHeight: CGFloat) -> CGPoint {

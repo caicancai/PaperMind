@@ -158,7 +158,12 @@ final class AppViewModel: ObservableObject {
         guard currentSelection != nil else { return }
 
         if let selection = currentSelection,
-           let cached = translationCache[translationCacheKey(for: selection.selectedText, target: translationTargetLanguage)] {
+           let cached = translationCache[
+            translationCacheKey(
+                for: normalizedTextForTranslation(selection.selectedText),
+                target: translationTargetLanguage
+            )
+           ] {
             translationResult = cached
             translationState = .success
             return
@@ -203,7 +208,12 @@ final class AppViewModel: ObservableObject {
         isMathSelection = FormulaDetector.isLikelyFormula(trimmed)
         invalidateTranslationRequests()
 
-        if let cached = translationCache[translationCacheKey(for: trimmed, target: translationTargetLanguage)] {
+        if let cached = translationCache[
+            translationCacheKey(
+                for: normalizedTextForTranslation(trimmed),
+                target: translationTargetLanguage
+            )
+        ] {
             translationResult = cached
             translationState = .success
         } else {
@@ -669,7 +679,8 @@ final class AppViewModel: ObservableObject {
             return
         }
 
-        let cacheKey = translationCacheKey(for: selection.selectedText, target: resolvedTarget)
+        let normalizedSelectionText = normalizedTextForTranslation(selection.selectedText)
+        let cacheKey = translationCacheKey(for: normalizedSelectionText, target: resolvedTarget)
         if let cached = translationCache[cacheKey] {
             if isLatestTranslationRequest(requestID) {
                 translationResult = cached
@@ -684,7 +695,7 @@ final class AppViewModel: ObservableObject {
 
         do {
             let result = try await dependencies.translationService.translate(
-                text: selection.selectedText,
+                text: normalizedSelectionText,
                 source: nil,
                 target: resolvedTarget
             )
@@ -707,6 +718,21 @@ final class AppViewModel: ObservableObject {
             translationCache.removeAll(keepingCapacity: true)
         }
         translationCache[cacheKey] = result
+    }
+
+    private func normalizedTextForTranslation(_ text: String) -> String {
+        let unixNewline = text.replacingOccurrences(of: "\r\n", with: "\n")
+        let paragraphs = unixNewline
+            .components(separatedBy: "\n\n")
+            .map { paragraph in
+                paragraph
+                    .components(separatedBy: "\n")
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty }
+                    .joined(separator: " ")
+            }
+            .filter { !$0.isEmpty }
+        return paragraphs.joined(separator: "\n\n")
     }
 
     private func cancelTransientTasks() {

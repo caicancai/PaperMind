@@ -11,6 +11,7 @@ struct SidebarView: View {
                 HStack {
                     Label("AI 讨论", systemImage: "bubble.left.and.bubble.right.fill")
                         .font(.system(.title3, design: .rounded, weight: .semibold))
+                        .lineLimit(1)
                     Spacer()
                     HStack(spacing: 6) {
                         Button {
@@ -42,19 +43,7 @@ struct SidebarView: View {
                     .help("打开 AI 设置")
                 }
 
-                HStack {
-                    Text("思考模式")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Picker("思考模式", selection: $viewModel.thinkingMode) {
-                        ForEach(ThinkingMode.allCases) { mode in
-                            Text(mode.rawValue).tag(mode)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .frame(width: 190)
-                }
+                thinkingModeSection
             }
             .padding(12)
             .background(sectionFill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -124,4 +113,62 @@ struct SidebarView: View {
         colorScheme == .dark ? Color.black.opacity(0.34) : Color.white.opacity(0.55)
     }
 
+    private var thinkingModeSelector: some View {
+        HStack(spacing: 4) {
+            ForEach(ThinkingMode.allCases) { mode in
+                Button {
+                    viewModel.thinkingMode = mode
+                } label: {
+                    Text(mode.rawValue)
+                        .font(.system(size: 13, weight: .semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 5)
+                        .foregroundStyle(viewModel.thinkingMode == mode ? Color.white : Color.secondary)
+                        .background(
+                            Capsule()
+                                .fill(
+                                    viewModel.thinkingMode == mode
+                                    ? Color(red: 0.12, green: 0.48, blue: 0.92)
+                                    : Color.clear
+                                )
+                        )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(mode.rawValue)
+            }
+        }
+        .padding(3)
+        .background(
+            Capsule()
+                .fill(colorScheme == .dark ? Color.white.opacity(0.12) : Color.black.opacity(0.08))
+        )
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("思考模式")
+    }
+
+    @ViewBuilder
+    private var thinkingModeSection: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                thinkingModeLabel
+                Spacer(minLength: 8)
+                thinkingModeSelector
+                    .frame(width: 190)
+                    .layoutPriority(1)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                thinkingModeLabel
+                thinkingModeSelector
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+
+    private var thinkingModeLabel: some View {
+        Text("思考模式")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+    }
 }

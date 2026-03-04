@@ -313,7 +313,7 @@ struct ChatPanelView: View {
             Text("回答模型")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
-            Picker("回答模型", selection: $viewModel.chatProviderOverride) {
+            Picker("", selection: $viewModel.chatProviderOverride) {
                 ForEach(viewModel.chatSelectableProviders) { provider in
                     Text(viewModel.chatProviderOptionTitle(provider))
                         .tag(provider)
@@ -322,6 +322,7 @@ struct ChatPanelView: View {
             }
             .pickerStyle(.menu)
             .labelsHidden()
+            .accessibilityLabel("回答模型")
             Spacer()
         }
     }

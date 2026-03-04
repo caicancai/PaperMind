@@ -24,7 +24,7 @@ struct RootView: View {
                     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             } detail: {
                 SidebarView(viewModel: viewModel)
-                    .navigationSplitViewColumnWidth(min: 260, ideal: 340, max: 440)
+                    .navigationSplitViewColumnWidth(min: 300, ideal: 340, max: 440)
                     .padding(10)
                     .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
