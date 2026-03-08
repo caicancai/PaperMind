@@ -97,7 +97,7 @@ xcrun notarytool store-credentials "PaperMindNotary" \
 Build, sign, notarize and staple:
 
 ```bash
-./scripts/release-dmg.sh v0.0.3 \
+./scripts/release-dmg.sh v0.0.4 \
   --identity "Developer ID Application: Your Name (TEAMID)" \
   --notary-profile "PaperMindNotary"
 ```

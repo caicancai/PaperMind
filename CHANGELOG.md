@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [v0.0.4] - 2026-03-08
+
 ### Fixed
 - Restored paragraph boundaries from PDF selections before translation, so multi-paragraph selections no longer collapse into one block.
 - Translated long passages paragraph-by-paragraph to preserve readable paragraph spacing in the floating card.

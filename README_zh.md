@@ -94,7 +94,7 @@ xcrun notarytool store-credentials "PaperMindNotary" \
 一键构建、签名、公证并加盖：
 
 ```bash
-./scripts/release-dmg.sh v0.0.3 \
+./scripts/release-dmg.sh v0.0.4 \
   --identity "Developer ID Application: Your Name (TEAMID)" \
   --notary-profile "PaperMindNotary"
 ```
