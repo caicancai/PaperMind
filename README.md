@@ -33,7 +33,9 @@ A Swift/macOS paper-reading assistant focused on three core workflows:
   - Auto-translate selected text
   - Google Translate by default
   - Target language quick switch in floating popup (`zh/en/ja/ko`)
-  - Long translation supports expand/collapse and auto-scroll
+  - Preserve paragraph structure from PDF selection when possible
+  - Long translation supports expand/collapse and improved paragraph readability
+  - Floating translation popup stays within the reader area instead of overlapping the right sidebar
 - AI Chat
   - Dedicated AI discussion sidebar
   - Selection-first flow with `Add Chat` (inject selection into draft, then ask)
@@ -95,7 +97,7 @@ xcrun notarytool store-credentials "PaperMindNotary" \
 Build, sign, notarize and staple:
 
 ```bash
-./scripts/release-dmg.sh v0.0.1 \
+./scripts/release-dmg.sh v0.0.3 \
   --identity "Developer ID Application: Your Name (TEAMID)" \
   --notary-profile "PaperMindNotary"
 ```

@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased]
+
+### Fixed
+- Restored paragraph boundaries from PDF selections before translation, so multi-paragraph selections no longer collapse into one block.
+- Translated long passages paragraph-by-paragraph to preserve readable paragraph spacing in the floating card.
+- Constrained the floating translation popup to the reader canvas to avoid overlapping the right AI sidebar.
+
 ## [v0.0.3] - 2026-03-04
 
 ### Changed

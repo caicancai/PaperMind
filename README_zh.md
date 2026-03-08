@@ -33,7 +33,9 @@
   - 选区自动翻译
   - 默认使用 Google 翻译
   - 悬浮卡片内可快速切换目标语言（`zh/en/ja/ko`）
-  - 长翻译支持展开/收起与自动滚动
+  - 尽量保留 PDF 选区里的段落结构再翻译
+  - 长翻译支持展开/收起，段落展示更清晰
+  - 翻译悬浮卡片会约束在阅读区内，避免压到右侧 AI 栏
 - AI 对话
   - 右侧 AI 讨论栏
   - 可基于当前选区 `Explain`
@@ -92,7 +94,7 @@ xcrun notarytool store-credentials "PaperMindNotary" \
 一键构建、签名、公证并加盖：
 
 ```bash
-./scripts/release-dmg.sh v0.0.1 \
+./scripts/release-dmg.sh v0.0.3 \
   --identity "Developer ID Application: Your Name (TEAMID)" \
   --notary-profile "PaperMindNotary"
 ```
@@ -108,61 +110,11 @@ xcrun notarytool store-credentials "PaperMindNotary" \
 
 ## 配置 AI Provider
 
-现在可直接在应用内 `AI 设置` 中切换 Provider/Model，API Key 会存到本地配置文件。
+现在可直接在应用内 `AI 设置` 中切换 Provider / Model，API Key 会存到本地应用配置。
 可通过侧栏齿轮按钮或 `Cmd + ,` 打开设置。
-环境变量仍可作为兜底/初始化来源。
-
-### 厂商切换
-
-- `AI_PROVIDER=openai`
-- `AI_PROVIDER=deepseek`
-- `AI_PROVIDER=kimi`
-- `AI_PROVIDER=auto`（默认，按 OpenAI -> DeepSeek -> Kimi 顺序尝试，前提是对应 Key 已配置）
-
-也支持在项目根目录使用 `.env.local` 存放这些变量，应用会自动读取。
-
-### 各厂商 Key 与可选模型
-
-- OpenAI
-  - `OPENAI_API_KEY`
-  - 可选：`OPENAI_MODEL`（默认：`gpt-4o-mini`）
-- DeepSeek
-  - `DEEPSEEK_API_KEY`
-  - 可选：`DEEPSEEK_MODEL`（默认：`deepseek-chat`）
-- Kimi（Moonshot）
-  - `KIMI_API_KEY`
-  - 可选：`KIMI_MODEL`（默认：`moonshot-v1-8k`）
-
-### 示例
-
-使用 OpenAI：
-
-```bash
-export AI_PROVIDER=openai
-export OPENAI_API_KEY=your_openai_key
-cd PaperMind
-open .build/debug/PaperMind
-```
-
-使用 DeepSeek：
-
-```bash
-export AI_PROVIDER=deepseek
-export DEEPSEEK_API_KEY=your_deepseek_key
-cd PaperMind
-open .build/debug/PaperMind
-```
-
-使用 Kimi：
-
-```bash
-export AI_PROVIDER=kimi
-export KIMI_API_KEY=your_kimi_key
-cd PaperMind
-open .build/debug/PaperMind
-```
-
-若厂商不可用或 Key 缺失，会直接提示“未对接 AI/配置缺失”，不会静默回退 Mock。
+当前只使用应用内配置，不再依赖 `.env.local` 兜底。  
+Kimi 默认模型为 `kimi-2.5`。
+如果厂商未配置或 Key 缺失，应用会直接提示配置错误，不会静默回退 Mock。
 
 ## 公式解释交互
 
