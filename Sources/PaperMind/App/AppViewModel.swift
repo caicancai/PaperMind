@@ -679,7 +679,8 @@ final class AppViewModel: ObservableObject {
             return
         }
 
-        let normalizedSelectionText = normalizedTextForTranslation(selection.selectedText)
+        let translationParagraphs = paragraphBlocksForTranslation(selection.selectedText)
+        let normalizedSelectionText = translationParagraphs.joined(separator: "\n\n")
         let cacheKey = translationCacheKey(for: normalizedSelectionText, target: resolvedTarget)
         if let cached = translationCache[cacheKey] {
             if isLatestTranslationRequest(requestID) {
@@ -694,11 +695,30 @@ final class AppViewModel: ObservableObject {
         }
 
         do {
-            let result = try await dependencies.translationService.translate(
-                text: normalizedSelectionText,
-                source: nil,
-                target: resolvedTarget
-            )
+            let result: String
+            if translationParagraphs.count <= 1 {
+                result = try await dependencies.translationService.translate(
+                    text: normalizedSelectionText,
+                    source: nil,
+                    target: resolvedTarget
+                )
+            } else {
+                var translatedParagraphs: [String] = []
+                translatedParagraphs.reserveCapacity(translationParagraphs.count)
+
+                for paragraph in translationParagraphs {
+                    guard isLatestTranslationRequest(requestID), !Task.isCancelled else {
+                        throw CancellationError()
+                    }
+                    let translated = try await dependencies.translationService.translate(
+                        text: paragraph,
+                        source: nil,
+                        target: resolvedTarget
+                    )
+                    translatedParagraphs.append(translated.trimmingCharacters(in: .whitespacesAndNewlines))
+                }
+                result = translatedParagraphs.joined(separator: "\n\n")
+            }
             cacheTranslation(result, for: cacheKey)
 
             guard isLatestTranslationRequest(requestID) else { return }
@@ -721,8 +741,18 @@ final class AppViewModel: ObservableObject {
     }
 
     private func normalizedTextForTranslation(_ text: String) -> String {
+        paragraphBlocksForTranslation(text).joined(separator: "\n\n")
+    }
+
+    private func paragraphBlocksForTranslation(_ text: String) -> [String] {
         let unixNewline = text.replacingOccurrences(of: "\r\n", with: "\n")
-        let paragraphs = unixNewline
+        let normalizedParagraphBreaks = unixNewline.replacingOccurrences(
+            of: #"\n[ \t]*\n+"#,
+            with: "\n\n",
+            options: .regularExpression
+        )
+
+        return normalizedParagraphBreaks
             .components(separatedBy: "\n\n")
             .map { paragraph in
                 paragraph
@@ -732,7 +762,6 @@ final class AppViewModel: ObservableObject {
                     .joined(separator: " ")
             }
             .filter { !$0.isEmpty }
-        return paragraphs.joined(separator: "\n\n")
     }
 
     private func cancelTransientTasks() {

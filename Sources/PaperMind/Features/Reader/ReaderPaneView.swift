@@ -52,37 +52,47 @@ struct ReaderPaneView: View {
                                     )
                             }
 
-                            ZStack(alignment: .topLeading) {
-                                PDFReaderView(
-                                    fileURL: paper.fileURL,
-                                    threadAnchors: [],
-                                    focusedThreadID: nil,
-                                    focusThreadTick: 0,
-                                    jumpToPageIndex: outlineJumpPageIndex,
-                                    jumpToPageTick: outlineJumpTick,
-                                    jumpToOutlineItemID: outlineJumpItemID,
-                                    jumpToOutlineTick: outlineJumpTick
-                                ) { text, pageIndex, viewRect, pageRect in
-                                    selectionRect = viewRect
-                                    viewModel.handleSelectionChanged(text: text, pageIndex: pageIndex, anchorRect: pageRect)
-                                } onPageChange: { pageIndex in
-                                    viewModel.currentReaderPageIndex = pageIndex
-                                    if let selectedID = outlineSelectedItemID,
-                                       let selectedItem = outlineItems.first(where: { $0.id == selectedID }),
-                                       selectedItem.pageIndex != pageIndex {
-                                        outlineSelectedItemID = nil
-                                    }
-                                } onThreadAnnotationTap: { threadID in
-                                    _ = threadID
-                                } onOutlineChange: { items in
-                                    outlineItems = items
-                                }
+                            GeometryReader { readerProxy in
+                                let cardWidth = popupWidth(for: readerProxy.size.width)
 
-                                if viewModel.currentSelection != nil {
-                                    floatingTranslationCard
-                                        .frame(width: popupWidth)
-                                        .position(popupPosition(in: proxy.size, popupWidth: popupWidth, popupHeight: popupHeight))
-                                        .transition(.opacity)
+                                ZStack(alignment: .topLeading) {
+                                    PDFReaderView(
+                                        fileURL: paper.fileURL,
+                                        threadAnchors: [],
+                                        focusedThreadID: nil,
+                                        focusThreadTick: 0,
+                                        jumpToPageIndex: outlineJumpPageIndex,
+                                        jumpToPageTick: outlineJumpTick,
+                                        jumpToOutlineItemID: outlineJumpItemID,
+                                        jumpToOutlineTick: outlineJumpTick
+                                    ) { text, pageIndex, viewRect, pageRect in
+                                        selectionRect = viewRect
+                                        viewModel.handleSelectionChanged(text: text, pageIndex: pageIndex, anchorRect: pageRect)
+                                    } onPageChange: { pageIndex in
+                                        viewModel.currentReaderPageIndex = pageIndex
+                                        if let selectedID = outlineSelectedItemID,
+                                           let selectedItem = outlineItems.first(where: { $0.id == selectedID }),
+                                           selectedItem.pageIndex != pageIndex {
+                                            outlineSelectedItemID = nil
+                                        }
+                                    } onThreadAnnotationTap: { threadID in
+                                        _ = threadID
+                                    } onOutlineChange: { items in
+                                        outlineItems = items
+                                    }
+
+                                    if viewModel.currentSelection != nil {
+                                        floatingTranslationCard
+                                            .frame(width: cardWidth)
+                                            .position(
+                                                popupPosition(
+                                                    in: readerProxy.size,
+                                                    popupWidth: cardWidth,
+                                                    popupHeight: popupHeight
+                                                )
+                                            )
+                                            .transition(.opacity)
+                                    }
                                 }
                             }
                         }
@@ -117,8 +127,8 @@ struct ReaderPaneView: View {
         }
     }
 
-    private var popupWidth: CGFloat {
-        360
+    private func popupWidth(for availableWidth: CGFloat) -> CGFloat {
+        min(360, max(280, availableWidth - 28))
     }
 
     private var popupHeight: CGFloat {
@@ -347,14 +357,15 @@ struct ReaderPaneView: View {
 
     @ViewBuilder
     private var translationResultView: some View {
-        let normalized = normalizedTranslationText(viewModel.translationResult)
-        let isLong = normalized.count > 280
-        let displayedText = showFullTranslation ? normalized : String(normalized.prefix(280))
+        let displayText = displayTranslationText(viewModel.translationResult)
+        let isLong = displayText.count > 280
+        let displayedText = showFullTranslation ? displayText : String(displayText.prefix(280))
 
         VStack(alignment: .leading, spacing: 6) {
             ScrollView {
                 Text(isLong && !showFullTranslation ? "\(displayedText)..." : displayedText)
                     .font(.callout)
+                    .lineSpacing(3)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 8)
@@ -374,19 +385,26 @@ struct ReaderPaneView: View {
         }
     }
 
-    private func normalizedTranslationText(_ text: String) -> String {
-        let normalized = text.replacingOccurrences(of: "\r\n", with: "\n")
-        let paragraphs = normalized
-            .components(separatedBy: "\n\n")
-            .map { paragraph in
-                paragraph
-                    .components(separatedBy: "\n")
-                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                    .filter { !$0.isEmpty }
-                    .joined(separator: " ")
-            }
-            .filter { !$0.isEmpty }
-        return paragraphs.joined(separator: "\n\n")
+    private func displayTranslationText(_ text: String) -> String {
+        let normalized = text
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !normalized.isEmpty else { return normalized }
+
+        // Treat blank lines with spaces as paragraph separators and keep original paragraph layout.
+        let normalizedParagraphBreaks = normalized.replacingOccurrences(
+            of: #"\n[ \t]*\n+"#,
+            with: "\n\n",
+            options: .regularExpression
+        )
+
+        // Prevent excessive blank lines.
+        return normalizedParagraphBreaks.replacingOccurrences(
+            of: #"\n{3,}"#,
+            with: "\n\n",
+            options: .regularExpression
+        )
     }
 
     private func popupPosition(in size: CGSize, popupWidth: CGFloat, popupHeight: CGFloat) -> CGPoint {

@@ -131,9 +131,14 @@ struct PDFReaderView: NSViewRepresentable {
                 guard let self else { return }
 
                 guard let selection = view.currentSelection,
-                      let text = selection.string,
                       let document = view.document,
                       let page = selection.pages.first else {
+                    self.onSelectionChange("", 0, nil, nil)
+                    return
+                }
+
+                let text = self.normalizedSelectionText(selection, on: page)
+                guard !text.isEmpty else {
                     self.onSelectionChange("", 0, nil, nil)
                     return
                 }
@@ -183,6 +188,64 @@ struct PDFReaderView: NSViewRepresentable {
             let pageIndex = view.currentPage.map { document.index(for: $0) } ?? 0
             view.clearSelection()
             onSelectionChange("", pageIndex, nil, nil)
+        }
+
+        private func normalizedSelectionText(_ selection: PDFSelection, on page: PDFPage) -> String {
+            let fallback = selection.string?
+                .replacingOccurrences(of: "\r\n", with: "\n")
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+            let lineSelections = selection.selectionsByLine()
+            guard !lineSelections.isEmpty else { return fallback }
+
+            struct LineInfo {
+                let text: String
+                let bounds: CGRect
+            }
+
+            let lines = lineSelections.compactMap { line -> LineInfo? in
+                let text = line.string?
+                    .replacingOccurrences(of: "\r\n", with: "\n")
+                    .components(separatedBy: .newlines)
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty }
+                    .joined(separator: " ")
+                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+                guard !text.isEmpty else { return nil }
+                return LineInfo(text: text, bounds: line.bounds(for: page))
+            }
+
+            guard lines.count > 1 else {
+                return lines.first?.text ?? fallback
+            }
+
+            let baselineMinX = lines.map(\.bounds.minX).min() ?? 0
+            let widestLine = lines.map(\.bounds.width).max() ?? 0
+
+            var paragraphs: [String] = []
+            var currentParagraph = lines[0].text
+
+            for index in 1..<lines.count {
+                let previous = lines[index - 1]
+                let current = lines[index]
+
+                let verticalGap = max(0, previous.bounds.minY - current.bounds.maxY)
+                let referenceHeight = max(previous.bounds.height, current.bounds.height, 1)
+                let startsIndented = current.bounds.minX - baselineMinX > 10
+                let previousLooksShort = widestLine > 0 && previous.bounds.width < widestLine * 0.82
+                let largeVerticalBreak = verticalGap > referenceHeight * 0.55
+
+                if largeVerticalBreak || startsIndented || previousLooksShort {
+                    paragraphs.append(currentParagraph)
+                    currentParagraph = current.text
+                } else {
+                    currentParagraph += " " + current.text
+                }
+            }
+
+            paragraphs.append(currentParagraph)
+            return paragraphs.joined(separator: "\n\n")
         }
 
         func syncThreadAnnotations(view: PDFView, threads: [Note], focusedThreadID: UUID?) {
