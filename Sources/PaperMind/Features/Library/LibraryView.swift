@@ -4,133 +4,147 @@ import UniformTypeIdentifiers
 struct LibraryView: View {
     @ObservedObject var viewModel: AppViewModel
     @State private var isImporterPresented = false
-    @Environment(\.colorScheme) private var colorScheme
+    @State private var searchText = ""
 
     var body: some View {
-        VStack(spacing: 14) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Label("PaperMind", systemImage: "doc.text.magnifyingglass")
-                        .font(.system(.title3, design: .rounded, weight: .semibold))
-                    Spacer()
-                    Button("导入 PDF") {
-                        isImporterPresented = true
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(Color(red: 0.16, green: 0.42, blue: 0.94))
-                }
-                Text("已导入 \(viewModel.papers.count) 篇论文")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .padding(12)
-            .background(headerFill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-            List(viewModel.papers, selection: Binding(
-                get: { viewModel.selectedPaperID },
-                set: { newValue in
-                    Task { await viewModel.didSelectPaper(id: newValue) }
-                }
-            )) { paper in
-                paperRow(paper)
-                    .tag(paper.id)
-                    .listRowInsets(EdgeInsets(top: 6, leading: 8, bottom: 6, trailing: 8))
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
-            }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
-            .background(listFill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-            HStack {
-                Button("刷新") {
-                    Task { await viewModel.refreshPapers() }
-                }
-                .buttonStyle(.bordered)
-
-                Button("关闭当前") {
-                    viewModel.closeCurrentPaper()
-                }
-                .buttonStyle(.bordered)
-                .disabled(viewModel.selectedPaperID == nil)
-
-                Spacer()
-
-                Button("删除选中") {
-                    Task { await viewModel.removeSelectedPaper() }
-                }
-                .buttonStyle(.bordered)
-                .tint(.red)
-                .disabled(viewModel.selectedPaperID == nil)
-            }
-            .font(.callout)
+        VStack(spacing: 0) {
+            libraryHeader
+            Divider()
+            paperList
+            Divider()
+            libraryFooter
         }
-        .padding(6)
         .fileImporter(
             isPresented: $isImporterPresented,
             allowedContentTypes: [.pdf],
             allowsMultipleSelection: false
         ) { result in
-            switch result {
-            case .success(let urls):
-                guard let url = urls.first else { return }
-                Task {
-                    await viewModel.importPaper(from: url)
-                }
-            case .failure:
-                break
-            }
+            guard case .success(let urls) = result, let url = urls.first else { return }
+            Task { await viewModel.importPaper(from: url) }
         }
     }
 
-    @ViewBuilder
-    private func paperRow(_ paper: Paper) -> some View {
-        let selected = viewModel.selectedPaperID == paper.id
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: selected ? "doc.richtext.fill" : "doc.plaintext")
-                .foregroundStyle(selected ? selectedIconColor : .secondary)
-                .font(.callout)
-                .padding(.top, 2)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(paper.title)
-                    .font(.system(.body, design: .rounded, weight: selected ? .semibold : .regular))
-                    .lineLimit(2)
-                Text(paper.fileURL.lastPathComponent)
+    private var libraryHeader: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("论文库")
+                    .font(.headline)
+                Spacer()
+                Text("\(viewModel.papers.count)")
                     .font(.caption)
-                    .lineLimit(1)
                     .foregroundStyle(.secondary)
             }
-            Spacer(minLength: 0)
+
+            TextField("搜索论文", text: $searchText)
+                .textFieldStyle(.roundedBorder)
         }
-        .padding(10)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(selected ? selectedRowFill : rowFill)
-        )
+        .padding(.horizontal, 12)
+        .padding(.top, 12)
+        .padding(.bottom, 10)
     }
 
-    private var headerFill: Color {
-        colorScheme == .dark ? Color.black.opacity(0.28) : Color.white.opacity(0.64)
+    private var paperList: some View {
+        List(filteredPapers, selection: Binding(
+            get: { viewModel.selectedPaperID },
+            set: { newValue in
+                Task { await viewModel.didSelectPaper(id: newValue) }
+            }
+        )) { paper in
+            HStack(spacing: 9) {
+                Image(systemName: "doc.text")
+                    .font(.system(size: 14))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 18)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(paper.title)
+                        .font(.system(size: 13, weight: .medium))
+                        .lineLimit(2)
+                    Text(paper.fileURL.lastPathComponent)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            .padding(.vertical, 4)
+            .tag(paper.id)
+            .contextMenu {
+                Button("关闭") {
+                    if viewModel.selectedPaperID == paper.id {
+                        viewModel.closeCurrentPaper()
+                    }
+                }
+                Button("删除", role: .destructive) {
+                    Task {
+                        if viewModel.selectedPaperID != paper.id {
+                            await viewModel.didSelectPaper(id: paper.id)
+                        }
+                        await viewModel.removeSelectedPaper()
+                    }
+                }
+            }
+        }
+        .listStyle(.sidebar)
+        .scrollContentBackground(.hidden)
+        .overlay {
+            if filteredPapers.isEmpty {
+                VStack(spacing: 8) {
+                    Image(systemName: searchText.isEmpty ? "doc.badge.plus" : "magnifyingglass")
+                        .font(.title2)
+                        .foregroundStyle(.tertiary)
+                    Text(searchText.isEmpty ? "导入第一篇论文" : "没有匹配的论文")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
     }
 
-    private var listFill: Color {
-        colorScheme == .dark ? Color.black.opacity(0.22) : Color.white.opacity(0.42)
+    private var libraryFooter: some View {
+        HStack(spacing: 6) {
+            Button {
+                isImporterPresented = true
+            } label: {
+                Image(systemName: "plus")
+            }
+            .help("导入 PDF")
+
+            Button {
+                Task { await viewModel.refreshPapers() }
+            } label: {
+                Image(systemName: "arrow.clockwise")
+            }
+            .help("刷新")
+
+            Spacer()
+
+            Button {
+                viewModel.closeCurrentPaper()
+            } label: {
+                Image(systemName: "xmark")
+            }
+            .disabled(viewModel.selectedPaperID == nil)
+            .help("关闭当前论文")
+
+            Button(role: .destructive) {
+                Task { await viewModel.removeSelectedPaper() }
+            } label: {
+                Image(systemName: "trash")
+            }
+            .disabled(viewModel.selectedPaperID == nil)
+            .help("删除选中论文")
+        }
+        .buttonStyle(.borderless)
+        .padding(.horizontal, 12)
+        .frame(height: 36)
     }
 
-    private var rowFill: Color {
-        colorScheme == .dark ? Color.white.opacity(0.06) : Color.white.opacity(0.50)
-    }
-
-    private var selectedRowFill: Color {
-        colorScheme == .dark
-        ? Color(red: 0.21, green: 0.28, blue: 0.38)
-        : Color(red: 0.89, green: 0.94, blue: 1.00)
-    }
-
-    private var selectedIconColor: Color {
-        colorScheme == .dark
-        ? Color(red: 0.54, green: 0.72, blue: 0.96)
-        : Color(red: 0.14, green: 0.38, blue: 0.88)
+    private var filteredPapers: [Paper] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !query.isEmpty else { return viewModel.papers }
+        return viewModel.papers.filter {
+            $0.title.lowercased().contains(query)
+                || $0.fileURL.lastPathComponent.lowercased().contains(query)
+        }
     }
 }

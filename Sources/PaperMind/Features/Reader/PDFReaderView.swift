@@ -49,6 +49,7 @@ struct PDFReaderView: NSViewRepresentable {
         view.autoScales = true
         view.displaysAsBook = false
         view.displayMode = .singlePageContinuous
+        view.backgroundColor = NSColor.controlBackgroundColor
         view.document = makeDocument(from: fileURL)
 
         context.coordinator.bind(to: view)
@@ -269,13 +270,22 @@ struct PDFReaderView: NSViewRepresentable {
 
                 if thread.id == focusedThreadID {
                     annotation.color = NSColor.systemBlue.withAlphaComponent(0.55)
-                } else if thread.status == .resolved {
-                    annotation.color = NSColor.systemGreen.withAlphaComponent(0.35)
                 } else {
-                    annotation.color = NSColor.systemOrange.withAlphaComponent(0.38)
+                    annotation.color = annotationColor(for: thread.kind)
                 }
 
                 page.addAnnotation(annotation)
+            }
+        }
+
+        private func annotationColor(for kind: NoteKind) -> NSColor {
+            switch kind {
+            case .insight: return NSColor.systemBlue.withAlphaComponent(0.28)
+            case .question: return NSColor.systemOrange.withAlphaComponent(0.34)
+            case .conclusion: return NSColor.systemGreen.withAlphaComponent(0.30)
+            case .method: return NSColor.systemPurple.withAlphaComponent(0.30)
+            case .experiment: return NSColor.systemIndigo.withAlphaComponent(0.30)
+            case .toRead: return NSColor.systemPink.withAlphaComponent(0.28)
             }
         }
 
@@ -291,7 +301,16 @@ struct PDFReaderView: NSViewRepresentable {
                 return
             }
 
-            view.go(to: page)
+            if let anchor = thread.anchorRect?.cgRect {
+                let pageBounds = page.bounds(for: .mediaBox)
+                let targetPoint = CGPoint(
+                    x: max(0, anchor.minX - 24),
+                    y: min(pageBounds.maxY - 24, anchor.maxY + 140)
+                )
+                view.go(to: PDFDestination(page: page, at: targetPoint))
+            } else {
+                view.go(to: page)
+            }
         }
 
         func navigateToPageIfNeeded(

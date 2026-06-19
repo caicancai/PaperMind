@@ -25,6 +25,7 @@ final class AppViewModel: ObservableObject {
     @Published var chatProviderOverride: AIProvider = .auto
     @Published var streamingAssistantMessageID: UUID?
     @Published var pinnedChatSelectionSummary: String?
+    @Published var chatComposerFocusTick: Int = 0
     @Published var aiProvider: AIProvider = .auto
     @Published var appTheme: AppTheme = .light
     @Published var openAIModel: String = AISettings.default.openAIModel
@@ -35,6 +36,9 @@ final class AppViewModel: ObservableObject {
     @Published var kimiAPIKeyDraft: String = ""
     @Published var aiConfigState: RequestState = .idle
 
+    @Published var isLibraryVisible: Bool = true
+    @Published var isInspectorVisible: Bool = true
+    @Published var sidebarSection: SidebarSection = .chat
     @Published var notes: [Note] = []
     @Published var activeThreadID: UUID?
     @Published var focusedThreadID: UUID?
@@ -45,6 +49,7 @@ final class AppViewModel: ObservableObject {
     @Published var replyDraft: String = ""
     @Published var showResolvedThreads: Bool = false
     @Published var noteState: RequestState = .idle
+    @Published var noteKindDraft: NoteKind = .insight
 
     private let dependencies: AppDependencies
     private var llmService: LLMService
@@ -53,6 +58,10 @@ final class AppViewModel: ObservableObject {
     private var paperKnowledgeCache: [UUID: PaperKnowledge] = [:]
     private var translationCache: [String: String] = [:]
     private var pinnedChatSelection: TextSelection?
+    private var pinnedChatSelectionAnchor: NoteAnchorRect?
+    private var chatNoteSources: [UUID: ChatNoteSource] = [:]
+    private var activeChatTask: Task<Void, Never>?
+    private var lastChatRetryContext: ChatRetryContext?
     private var latestTranslationRequestID: UInt64 = 0
     private var latestChatRequestID: UInt64 = 0
     private let translationCacheLimit = 200
@@ -249,7 +258,12 @@ final class AppViewModel: ObservableObject {
 
         chatMode = .explain
         let requestID = beginChatRequest()
-        await sendChatMessage(input: finalInput, selection: selection, requestID: requestID)
+        await sendChatMessage(
+            input: finalInput,
+            selection: selection,
+            selectionAnchor: currentSelectionAnchor,
+            requestID: requestID
+        )
     }
 
     func prepareChatDraftFromSelection() {
@@ -259,16 +273,24 @@ final class AppViewModel: ObservableObject {
         }
 
         pinnedChatSelection = selection
+        pinnedChatSelectionAnchor = currentSelectionAnchor
         pinnedChatSelectionSummary = "已附加选区 P\(selection.pageIndex + 1) · \(selection.selectedText.count) 字"
+        isInspectorVisible = true
+        sidebarSection = .chat
         chatMode = .explain
         chatState = .idle
+        chatComposerFocusTick &+= 1
         if chatInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             chatInput = ""
         }
+
+        assert(sidebarSection == .chat)
+        assert(pinnedChatSelectionSummary != nil)
     }
 
     func clearPinnedChatSelection() {
         pinnedChatSelection = nil
+        pinnedChatSelectionAnchor = nil
         pinnedChatSelectionSummary = nil
     }
 
@@ -296,9 +318,19 @@ final class AppViewModel: ObservableObject {
         await sendChatMessage(
             input: hiddenPrompt,
             selection: selection,
+            selectionAnchor: currentSelectionAnchor,
             requestID: requestID,
             displayInput: displayPrompt
         )
+    }
+
+    func submitFormulaExplanation() {
+        guard activeChatTask == nil, chatState != .loading else { return }
+        activeChatTask = Task { [weak self] in
+            guard let self else { return }
+            await self.explainFormulaUsingSelection()
+            self.activeChatTask = nil
+        }
     }
 
     func sendChatFromInput(text: String? = nil) async {
@@ -309,12 +341,82 @@ final class AppViewModel: ObservableObject {
             return
         }
         let selectionForMessage = pinnedChatSelection ?? currentSelection
+        let selectionAnchor = pinnedChatSelection != nil ? pinnedChatSelectionAnchor : currentSelectionAnchor
         let usedPinnedSelection = pinnedChatSelection != nil
         let requestID = beginChatRequest()
-        await sendChatMessage(input: input, selection: selectionForMessage, requestID: requestID)
+        await sendChatMessage(
+            input: input,
+            selection: selectionForMessage,
+            selectionAnchor: selectionAnchor,
+            requestID: requestID
+        )
         if usedPinnedSelection, chatState == .success {
             clearPinnedChatSelection()
         }
+    }
+
+    func submitChat(text: String) {
+        guard activeChatTask == nil, chatState != .loading else { return }
+        activeChatTask = Task { [weak self] in
+            guard let self else { return }
+            await self.sendChatFromInput(text: text)
+            self.activeChatTask = nil
+        }
+    }
+
+    func stopChatResponse() {
+        guard chatState == .loading || activeChatTask != nil else { return }
+        latestChatRequestID &+= 1
+        activeChatTask?.cancel()
+        activeChatTask = nil
+
+        if let messageID = streamingAssistantMessageID,
+           let index = chatMessages.firstIndex(where: { $0.id == messageID }),
+           chatMessages[index].content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            chatMessages.remove(at: index)
+        }
+        streamingAssistantMessageID = nil
+        chatState = .idle
+    }
+
+    func retryLatestChatResponse() {
+        guard activeChatTask == nil,
+              chatState != .loading,
+              let context = lastChatRetryContext else { return }
+
+        chatMessages.removeAll {
+            $0.id == context.userMessageID || $0.id == context.assistantMessageID
+        }
+        chatNoteSources[context.assistantMessageID] = nil
+
+        let requestID = beginChatRequest()
+        activeChatTask = Task { [weak self] in
+            guard let self else { return }
+            await self.sendChatMessage(
+                input: context.input,
+                selection: context.selection,
+                selectionAnchor: context.selectionAnchor,
+                requestID: requestID,
+                displayInput: context.displayInput
+            )
+            self.activeChatTask = nil
+        }
+    }
+
+    func startNewChat() {
+        stopChatResponse()
+        chatSessionID = UUID()
+        chatMessages = []
+        chatState = .idle
+        streamingAssistantMessageID = nil
+        lastChatRetryContext = nil
+        chatNoteSources = [:]
+        clearPinnedChatSelection()
+        chatComposerFocusTick &+= 1
+    }
+
+    var canRetryLatestChatResponse: Bool {
+        lastChatRetryContext != nil && chatState != .loading
     }
 
     var chatSelectableProviders: [AIProvider] {
@@ -376,6 +478,7 @@ final class AppViewModel: ObservableObject {
             pageIndex: currentSelection?.pageIndex,
             anchorRect: currentSelectionAnchor,
             tags: [],
+            kind: noteKindDraft,
             status: .open,
             comments: [
                 NoteComment(id: UUID(), role: .author, content: comment.isEmpty ? "（空评论）" : comment, createdAt: now)
@@ -395,6 +498,106 @@ final class AppViewModel: ObservableObject {
         } catch {
             noteState = .failure(error.localizedDescription)
         }
+    }
+
+    func createNoteFromCurrentSelection(kind: NoteKind = .insight) async {
+        guard let paper = selectedPaper, let selection = currentSelection else {
+            noteState = .failure("请先选择论文片段")
+            return
+        }
+
+        let now = Date()
+        let note = Note(
+            id: UUID(),
+            paperID: paper.id,
+            title: suggestedNoteTitle(from: selection.selectedText),
+            content: "",
+            quote: selection.selectedText,
+            pageIndex: selection.pageIndex,
+            anchorRect: currentSelectionAnchor,
+            tags: [],
+            kind: kind,
+            createdAt: now,
+            updatedAt: now
+        )
+        await saveNewNote(note)
+    }
+
+    func createFreeNote() async {
+        guard let paper = selectedPaper else {
+            noteState = .failure("请先选择论文")
+            return
+        }
+
+        let now = Date()
+        let note = Note(
+            id: UUID(),
+            paperID: paper.id,
+            title: "新笔记",
+            content: "",
+            quote: nil,
+            pageIndex: currentReaderPageIndex,
+            anchorRect: nil,
+            tags: [],
+            kind: .insight,
+            createdAt: now,
+            updatedAt: now
+        )
+        await saveNewNote(note)
+    }
+
+    func updateNote(id: UUID, title: String, content: String, kind: NoteKind) async {
+        guard let current = notes.first(where: { $0.id == id }) else {
+            noteState = .failure("笔记不存在")
+            return
+        }
+
+        var updated = current
+        updated.title = title.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "未命名笔记"
+        updated.content = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        updated.kind = kind
+        updated.updatedAt = Date()
+
+        noteState = .loading
+        do {
+            try await dependencies.noteRepository.save(note: updated)
+            noteState = .success
+            await refreshNotesForSelectedPaper()
+            focusThread(updated.id)
+        } catch {
+            noteState = .failure(error.localizedDescription)
+        }
+    }
+
+    func saveChatMessageAsNote(messageID: UUID) async {
+        guard let paper = selectedPaper,
+              let message = chatMessages.first(where: { $0.id == messageID && $0.role == .assistant }) else {
+            noteState = .failure("找不到可保存的 AI 回答")
+            return
+        }
+
+        let content = message.content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !content.isEmpty else {
+            noteState = .failure("AI 回答为空")
+            return
+        }
+
+        let source = chatNoteSources[messageID]
+        let now = Date()
+        let note = Note(
+            id: UUID(),
+            paperID: paper.id,
+            title: source?.selection.map { "AI 解释 · P\($0.pageIndex + 1)" } ?? "AI 阅读笔记",
+            content: content,
+            quote: source?.selection?.selectedText,
+            pageIndex: source?.selection?.pageIndex,
+            anchorRect: source?.anchor,
+            tags: ["AI"],
+            kind: .insight,
+            createdAt: now,
+            updatedAt: now
+        )
+        await saveNewNote(note)
     }
 
     func addReplyToActiveThread() async {
@@ -475,6 +678,7 @@ final class AppViewModel: ObservableObject {
     func beginCommentFromSelection() {
         fillDraftFromSelection()
         showCommentsPanel = true
+        sidebarSection = .notes
         noteState = .idle
     }
 
@@ -488,6 +692,7 @@ final class AppViewModel: ObservableObject {
     }
 
     func handleThreadAnnotationTapped(_ id: UUID) {
+        sidebarSection = .notes
         focusThread(id)
     }
 
@@ -511,6 +716,7 @@ final class AppViewModel: ObservableObject {
     private func sendChatMessage(
         input: String,
         selection: TextSelection?,
+        selectionAnchor: NoteAnchorRect? = nil,
         requestID: UInt64,
         displayInput: String? = nil
     ) async {
@@ -530,6 +736,18 @@ final class AppViewModel: ObservableObject {
         }
 
         let assistantMessageID = UUID()
+        lastChatRetryContext = ChatRetryContext(
+            input: input,
+            displayInput: displayInput,
+            selection: selection,
+            selectionAnchor: selectionAnchor,
+            userMessageID: userMessage.id,
+            assistantMessageID: assistantMessageID
+        )
+        chatNoteSources[assistantMessageID] = ChatNoteSource(
+            selection: selection,
+            anchor: selectionAnchor
+        )
         chatMessages.append(
             ChatMessage(
                 id: assistantMessageID,
@@ -600,6 +818,28 @@ final class AppViewModel: ObservableObject {
             streamingAssistantMessageID = nil
             chatState = .failure(error.localizedDescription)
         }
+    }
+
+    private func saveNewNote(_ note: Note) async {
+        noteState = .loading
+        do {
+            try await dependencies.noteRepository.save(note: note)
+            isInspectorVisible = true
+            sidebarSection = .notes
+            noteState = .success
+            await refreshNotesForSelectedPaper()
+            focusThread(note.id)
+        } catch {
+            noteState = .failure(error.localizedDescription)
+        }
+    }
+
+    private func suggestedNoteTitle(from quote: String) -> String {
+        let oneLine = quote
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let clipped = String(oneLine.prefix(36))
+        return clipped.isEmpty ? "选区笔记" : clipped
     }
 
     private func buildContext(selection: TextSelection?) -> PaperContext? {
@@ -875,5 +1115,25 @@ final class AppViewModel: ObservableObject {
         if !isChatProviderSelectable(chatProviderOverride) {
             chatProviderOverride = .auto
         }
+    }
+}
+
+private struct ChatNoteSource {
+    var selection: TextSelection?
+    var anchor: NoteAnchorRect?
+}
+
+private struct ChatRetryContext {
+    var input: String
+    var displayInput: String?
+    var selection: TextSelection?
+    var selectionAnchor: NoteAnchorRect?
+    var userMessageID: UUID
+    var assistantMessageID: UUID
+}
+
+private extension String {
+    var nonEmpty: String? {
+        isEmpty ? nil : self
     }
 }

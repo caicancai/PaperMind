@@ -29,6 +29,12 @@ A Swift/macOS paper-reading assistant focused on three core workflows:
 - Reading Experience
   - Reading-first center column layout
   - Floating popup appears after text selection
+- Paper Notes
+  - Save a PDF selection as a note with page and text anchor
+  - Categorize notes as insight, question, conclusion, method, experiment, or to-read
+  - Bidirectional navigation between PDF highlights and notes
+  - Search, edit, and delete locally persisted notes
+  - Save AI responses as notes while preserving the originating selection anchor
 - Translation
   - Auto-translate selected text
   - Google Translate by default
@@ -48,6 +54,9 @@ A Swift/macOS paper-reading assistant focused on three core workflows:
   - Reads and caches full-paper local context before first answer
   - Assistant messages are streamed token-by-token
   - Assistant messages are rendered as Markdown (post-stream)
+  - Model and Fast/Deep controls live directly in the composer
+  - Stop generation, regenerate, copy response, and start-new-chat actions
+  - Empty-state suggestions for summary, method, and evidence review
 
 ## Requirements
 

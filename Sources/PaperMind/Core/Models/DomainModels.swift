@@ -50,6 +50,7 @@ struct Note: Identifiable, Codable, Equatable, Hashable {
     var pageIndex: Int?
     var anchorRect: NoteAnchorRect?
     var tags: [String]
+    var kind: NoteKind
     var status: NoteStatus
     var comments: [NoteComment]
     var createdAt: Date
@@ -64,6 +65,7 @@ struct Note: Identifiable, Codable, Equatable, Hashable {
         pageIndex: Int?,
         anchorRect: NoteAnchorRect? = nil,
         tags: [String],
+        kind: NoteKind = .insight,
         status: NoteStatus = .open,
         comments: [NoteComment] = [],
         createdAt: Date,
@@ -77,6 +79,7 @@ struct Note: Identifiable, Codable, Equatable, Hashable {
         self.pageIndex = pageIndex
         self.anchorRect = anchorRect
         self.tags = tags
+        self.kind = kind
         self.status = status
         self.comments = comments
         self.createdAt = createdAt
@@ -92,6 +95,7 @@ struct Note: Identifiable, Codable, Equatable, Hashable {
         case pageIndex
         case anchorRect
         case tags
+        case kind
         case status
         case comments
         case createdAt
@@ -108,6 +112,7 @@ struct Note: Identifiable, Codable, Equatable, Hashable {
         pageIndex = try container.decodeIfPresent(Int.self, forKey: .pageIndex)
         anchorRect = try container.decodeIfPresent(NoteAnchorRect.self, forKey: .anchorRect)
         tags = try container.decodeIfPresent([String].self, forKey: .tags) ?? []
+        kind = try container.decodeIfPresent(NoteKind.self, forKey: .kind) ?? .insight
         status = try container.decodeIfPresent(NoteStatus.self, forKey: .status) ?? .open
         comments = try container.decodeIfPresent([NoteComment].self, forKey: .comments) ?? []
         createdAt = try container.decode(Date.self, forKey: .createdAt)
@@ -125,6 +130,46 @@ struct Note: Identifiable, Codable, Equatable, Hashable {
             ]
         }
     }
+}
+
+enum NoteKind: String, Codable, CaseIterable, Identifiable, Hashable {
+    case insight
+    case question
+    case conclusion
+    case method
+    case experiment
+    case toRead
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .insight: return "笔记"
+        case .question: return "疑问"
+        case .conclusion: return "结论"
+        case .method: return "方法"
+        case .experiment: return "实验"
+        case .toRead: return "待读"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .insight: return "lightbulb"
+        case .question: return "questionmark.circle"
+        case .conclusion: return "checkmark.seal"
+        case .method: return "gearshape.2"
+        case .experiment: return "chart.bar.xaxis"
+        case .toRead: return "bookmark"
+        }
+    }
+}
+
+enum SidebarSection: String, CaseIterable, Identifiable {
+    case chat = "AI 讨论"
+    case notes = "笔记"
+
+    var id: String { rawValue }
 }
 
 enum NoteStatus: String, Codable, Equatable, Hashable {
