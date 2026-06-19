@@ -4,6 +4,19 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Reintroduced personal paper notes with PDF selection anchors, categories, search, editing, and highlight navigation.
+- Added saving AI responses as anchored notes.
+- Added chat controls for stopping generation, regenerating, copying responses, and starting a new conversation.
+
+### Changed
+- Redesigned the main window around a native macOS toolbar, library sidebar, PDF-first reading canvas, and collapsible inspector.
+- Reworked the selection popup into a compact action bar with on-demand translation details.
+- Rebuilt the AI composer with inline provider and Fast/Deep controls, selection attachments, and guided empty-state prompts.
+
+### Fixed
+- Preserved the core `Add Chat` flow when switching between AI and notes: it now opens the AI inspector, attaches the selection, and focuses the composer.
+
 ## [v0.0.4] - 2026-03-08
 
 ### Fixed

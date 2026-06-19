@@ -138,7 +138,7 @@ protocol PaperRepository {
 14. Implemented: DeepSeek endpoint fixed to `/v1/chat/completions`.
 15. Implemented: Kimi default model updated to `kimi-2.5`.
 16. Implemented: app now uses in-app settings only for provider/model/key (no `.env.local` fallback).
-17. Disabled in UI: notes/comments flow (kept out of main workflow for now).
+17. Implemented: redesigned personal notes flow with selection anchors, categories, search/edit/delete, PDF highlight navigation, and AI-response saving.
 18. Tests are currently not enabled in package targets.
 19. Implemented: Reader outline extraction and click-to-jump from PDF embedded bookmarks.
 20. Implemented: fallback inferred outline detection for PDFs without embedded bookmarks.
@@ -147,6 +147,7 @@ protocol PaperRepository {
 23. Implemented: split layout min-width tuning for better 13-inch screen behavior.
 24. Implemented: packaging scripts now generate and embed app icon (`AppIcon.icns`) automatically.
 25. Updated demo media: refreshed README assets are `docs/demo.gif` and `docs/demo.mp4`.
+26. Implemented: conversational AI composer with inline model/thinking controls, stop, retry, copy, new chat, and prompt suggestions.
 
 ## Key Interaction Decisions
 1. Reading-first layout and behavior take priority.
@@ -162,7 +163,7 @@ protocol PaperRepository {
 
 ## Next Priorities
 1. Chat persistence by paper/session (restore history after restart).
-2. Comments/notes feature redesign and reintroduction.
+2. Note-derived paper summaries and export.
 3. Better context extraction quality and prompt control.
 4. Optional encrypted local secret store (if passwordless UX remains a requirement).
 5. Translation popup editing mode (edit source text before re-translate).

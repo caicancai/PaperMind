@@ -3,14 +3,16 @@ import AppKit
 
 struct ChatPanelView: View {
     @ObservedObject var viewModel: AppViewModel
-    @State private var draftInput: String = ""
+    @State private var draftInput = ""
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            headerBar
+        VStack(spacing: 0) {
+            conversationHeader
+            Divider()
             chatTimeline
-            composerPanel
+            errorBanner
+            composer
         }
         .onAppear {
             draftInput = viewModel.chatInput
@@ -22,249 +24,383 @@ struct ChatPanelView: View {
         }
     }
 
-    private func sendCurrentInput() {
-        guard viewModel.isCurrentChatProviderUsable else { return }
-        let text = draftInput.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
-        draftInput = ""
-        Task { await viewModel.sendChatFromInput(text: text) }
-    }
+    private var conversationHeader: some View {
+        HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text("论文对话")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                Text(viewModel.selectedPaper == nil ? "未选择论文" : "基于当前论文")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
 
-    private var headerBar: some View {
-        HStack(spacing: 6) {
-            Label("论文对话", systemImage: "bubble.left.and.bubble.right.fill")
-                .font(.system(.subheadline, design: .rounded, weight: .semibold))
             Spacer()
-            providerBadge
-            chatStateBadge
+
+            Button {
+                viewModel.startNewChat()
+                draftInput = ""
+            } label: {
+                Image(systemName: "square.and.pencil")
+            }
+            .buttonStyle(.borderless)
+            .help("新对话")
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(sectionFill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .padding(.bottom, 10)
     }
 
     private var chatTimeline: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 8) {
+                LazyVStack(alignment: .leading, spacing: 18) {
                     if viewModel.chatMessages.isEmpty {
-                        Text("你可以直接提问，或先选中一段内容再深入讨论。")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                            .padding(10)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(panelFill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        emptyConversation
                     } else {
                         ForEach(viewModel.chatMessages) { message in
-                            messageRow(for: message)
+                            messageRow(message)
                                 .id(message.id)
                         }
                     }
                 }
-                .padding(8)
+                .padding(.vertical, 16)
+                .padding(.horizontal, 2)
             }
-            .frame(minHeight: 260)
-            .background(sectionFill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .frame(minHeight: 280)
             .onChange(of: viewModel.chatMessages.count) { _ in
-                scrollToLatestMessage(proxy: proxy)
-            }
-            .onChange(of: viewModel.streamingAssistantMessageID) { _ in
-                scrollToLatestMessage(proxy: proxy, animated: false)
+                scrollToLatest(proxy)
             }
             .onChange(of: latestMessageScrollToken) { _ in
-                scrollToLatestMessage(proxy: proxy, animated: false)
+                scrollToLatest(proxy, animated: false)
             }
         }
     }
 
-    private func messageRow(for message: ChatMessage) -> some View {
-        let isUser = message.role == .user
-        return HStack(alignment: .bottom, spacing: 6) {
-            if !isUser {
-                bubbleAvatar(isUser: false)
-            }
-            if isUser {
-                Spacer(minLength: 20)
+    private var emptyConversation: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 6) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 26, weight: .light))
+                    .foregroundStyle(.secondary)
+                Text("你想了解什么？")
+                    .font(.title3)
+                    .fontWeight(.semibold)
+                Text("可以直接提问，也可以先在 PDF 中选择一段内容。")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
             }
 
-            VStack(alignment: .leading, spacing: 5) {
-                HStack(spacing: 6) {
-                    Text(isUser ? "You" : "PaperMind")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                    Text(formatMessageTime(message.createdAt))
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                }
-
-                if !isUser && viewModel.streamingAssistantMessageID == message.id {
-                    Text(message.content)
-                        .font(.system(size: 13.5, weight: .regular, design: .default))
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                } else if isUser {
-                    Text(message.content)
-                        .font(.system(size: 13.5, weight: .regular, design: .default))
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                } else {
-                    MarkdownContentView(markdown: message.content)
-                }
+            VStack(spacing: 8) {
+                suggestionButton("总结这篇论文的核心贡献", symbol: "text.alignleft")
+                suggestionButton("解释论文的方法和关键假设", symbol: "gearshape.2")
+                suggestionButton("实验结果是否支持作者的结论？", symbol: "chart.bar.xaxis")
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .frame(maxWidth: 300, alignment: .leading)
-            .background(isUser ? userBubbleFill : assistantBubbleFill, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(bubbleStroke(isUser: isUser), lineWidth: 1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, 36)
+    }
+
+    private func suggestionButton(_ title: String, symbol: String) -> some View {
+        Button {
+            draftInput = title
+            viewModel.chatComposerFocusTick &+= 1
+        } label: {
+            HStack(spacing: 9) {
+                Image(systemName: symbol)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 18)
+                Text(title)
+                    .font(.callout)
+                    .foregroundStyle(.primary)
+                Spacer()
+                Image(systemName: "arrow.up.left")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 11)
+            .padding(.vertical, 9)
+            .background(
+                Color.primary.opacity(colorScheme == .dark ? 0.06 : 0.035),
+                in: RoundedRectangle(cornerRadius: 9, style: .continuous)
             )
-            .shadow(color: .black.opacity(colorScheme == .dark ? 0.12 : 0.04), radius: 2, y: 1)
+        }
+        .buttonStyle(.plain)
+    }
 
-            if !isUser {
-                Spacer(minLength: 20)
-            }
+    private func messageRow(_ message: ChatMessage) -> some View {
+        let isUser = message.role == .user
+        let isStreaming = viewModel.streamingAssistantMessageID == message.id
+
+        return VStack(alignment: isUser ? .trailing : .leading, spacing: 7) {
             if isUser {
-                bubbleAvatar(isUser: true)
+                Text(message.content)
+                    .font(.system(size: 13.5))
+                    .textSelection(.enabled)
+                    .padding(.horizontal, 11)
+                    .padding(.vertical, 8)
+                    .background(
+                        Color.accentColor.opacity(colorScheme == .dark ? 0.22 : 0.11),
+                        in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    )
+                    .frame(maxWidth: 285, alignment: .trailing)
+            } else {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "sparkles")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 18, height: 20)
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        if isStreaming && message.content.isEmpty {
+                            HStack(spacing: 7) {
+                                ProgressView()
+                                    .controlSize(.small)
+                                Text(viewModel.thinkingMode == .deep ? "正在深入阅读论文…" : "正在思考…")
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } else if isStreaming {
+                            Text(message.content)
+                                .font(.system(size: 13.5))
+                                .lineSpacing(3)
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        } else {
+                            MarkdownContentView(markdown: message.content)
+                        }
+
+                        if !isStreaming {
+                            assistantActions(message)
+                        }
+                    }
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: isUser ? .trailing : .leading)
     }
 
-    private var composerPanel: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            providerSelector
-            if let pinned = viewModel.pinnedChatSelectionSummary {
-                HStack(spacing: 8) {
-                    Label(pinned, systemImage: "paperclip")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Button {
-                        viewModel.clearPinnedChatSelection()
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+    private func assistantActions(_ message: ChatMessage) -> some View {
+        HStack(spacing: 12) {
+            actionButton("复制", symbol: "doc.on.doc") {
+                copyToPasteboard(message.content)
+            }
+
+            actionButton("存为笔记", symbol: "note.text.badge.plus") {
+                Task { await viewModel.saveChatMessageAsNote(messageID: message.id) }
+            }
+
+            if message.id == latestAssistantMessageID, viewModel.canRetryLatestChatResponse {
+                actionButton("重新生成", symbol: "arrow.clockwise") {
+                    viewModel.retryLatestChatResponse()
+                }
+            }
+        }
+    }
+
+    private func actionButton(_ title: String, symbol: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: symbol)
+                .font(.caption2)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+    }
+
+    @ViewBuilder
+    private var errorBanner: some View {
+        if case .failure(let message) = viewModel.chatState {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+                Spacer()
+                if viewModel.canRetryLatestChatResponse {
+                    Button("重试") {
+                        viewModel.retryLatestChatResponse()
                     }
                     .buttonStyle(.plain)
+                    .font(.caption)
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
-                .background(panelFill, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            }
+            .padding(9)
+            .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+            .padding(.bottom, 8)
+        }
+    }
+
+    private var composer: some View {
+        VStack(spacing: 0) {
+            if let pinned = viewModel.pinnedChatSelectionSummary {
+                selectionAttachment(pinned)
+                    .padding(.horizontal, 10)
+                    .padding(.top, 9)
             }
 
             ZStack(alignment: .topLeading) {
                 ChatInputTextView(
                     text: $draftInput,
+                    focusTick: viewModel.chatComposerFocusTick,
                     onSubmit: sendCurrentInput
                 )
-                .frame(minHeight: 42, maxHeight: 88)
-                .padding(.horizontal, 7)
-                .padding(.vertical, 5)
-                .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(inputFill)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(Color.black.opacity(colorScheme == .dark ? 0.20 : 0.08), lineWidth: 1)
-                )
+                .frame(minHeight: 54, maxHeight: 130)
+                .padding(.horizontal, 8)
+                .padding(.top, 7)
+                .padding(.bottom, 3)
 
                 if draftInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    Text("输入问题，`Enter` 发送，`Shift + Enter` 换行")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 10)
+                    Text(viewModel.pinnedChatSelectionSummary == nil ? "询问这篇论文…" : "询问所选内容…")
+                        .font(.system(size: 13.5))
+                        .foregroundStyle(.tertiary)
+                        .padding(.horizontal, 15)
+                        .padding(.vertical, 14)
                         .allowsHitTesting(false)
                 }
             }
 
-            HStack {
-                Text(chatHintText)
-                    .font(.caption2)
-                    .foregroundStyle(chatHintColor)
+            HStack(spacing: 10) {
+                providerMenu
+                thinkingMenu
+
                 Spacer()
-                Button {
-                    sendCurrentInput()
-                } label: {
-                    Label("发送", systemImage: "arrow.up")
+
+                Text(composerHint)
+                    .font(.caption2)
+                    .foregroundStyle(
+                        viewModel.isCurrentChatProviderUsable
+                        ? Color.secondary.opacity(0.72)
+                        : Color.orange
+                    )
+
+                if viewModel.chatState == .loading {
+                    Button {
+                        viewModel.stopChatResponse()
+                    } label: {
+                        Image(systemName: "stop.fill")
+                            .font(.system(size: 10))
+                            .frame(width: 28, height: 28)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .clipShape(Circle())
+                    .help("停止生成")
+                } else {
+                    Button {
+                        sendCurrentInput()
+                    } label: {
+                        Image(systemName: "arrow.up")
+                            .font(.system(size: 11, weight: .bold))
+                            .frame(width: 28, height: 28)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .clipShape(Circle())
+                    .disabled(
+                        draftInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        || !viewModel.isCurrentChatProviderUsable
+                    )
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.regular)
-                .tint(Color(red: 0.17, green: 0.41, blue: 0.89))
-                .disabled(
-                    viewModel.chatState == .loading
-                    || draftInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                    || !viewModel.isCurrentChatProviderUsable
-                )
             }
+            .padding(.horizontal, 10)
+            .padding(.bottom, 9)
+        }
+        .background(
+            inputFill,
+            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color.primary.opacity(0.12), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(colorScheme == .dark ? 0.16 : 0.06), radius: 8, y: 3)
+        .padding(.top, 10)
+    }
+
+    private func selectionAttachment(_ title: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "text.quote")
+                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("已附加 PDF 选区")
+                    .font(.caption2)
+                    .fontWeight(.semibold)
+                Text(title)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button {
+                viewModel.clearPinnedChatSelection()
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(.tertiary)
+            }
+            .buttonStyle(.plain)
         }
         .padding(8)
-        .background(sectionFill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
     }
 
-    private func bubbleAvatar(isUser: Bool) -> some View {
-        Image(systemName: isUser ? "person.fill" : "sparkles")
-            .font(.system(size: 10, weight: .semibold))
-            .foregroundStyle(isUser ? Color.white.opacity(0.9) : Color.white.opacity(0.86))
-            .frame(width: 18, height: 18)
-            .background(
-                Circle()
-                    .fill(isUser ? Color(red: 0.23, green: 0.47, blue: 0.88) : Color(red: 0.18, green: 0.47, blue: 0.49))
-            )
-    }
-
-    private var chatStateBadge: some View {
-        Group {
-            switch viewModel.chatState {
-            case .idle:
-                badge(title: "空闲", symbol: "checkmark.circle", tint: .secondary)
-            case .loading:
-                HStack(spacing: 6) {
-                    ProgressView()
-                        .scaleEffect(0.65)
-                    Text("思考中")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+    private var providerMenu: some View {
+        Menu {
+            ForEach(viewModel.chatSelectableProviders) { provider in
+                Button {
+                    viewModel.chatProviderOverride = provider
+                } label: {
+                    if viewModel.chatProviderOverride == provider {
+                        Label(viewModel.chatProviderOptionTitle(provider), systemImage: "checkmark")
+                    } else {
+                        Text(viewModel.chatProviderOptionTitle(provider))
+                    }
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 5)
-                .background(panelFill, in: Capsule())
-            case .success:
-                badge(title: "已完成", symbol: "checkmark.circle.fill", tint: Color(red: 0.14, green: 0.57, blue: 0.34))
-            case .failure:
-                badge(title: "失败", symbol: "exclamationmark.triangle.fill", tint: .orange)
+                .disabled(!viewModel.isChatProviderSelectable(provider))
             }
-        }
-    }
-
-    private var providerBadge: some View {
-        badge(
-            title: viewModel.chatProviderOptionTitle(viewModel.chatProviderOverride),
-            symbol: "cpu",
-            tint: .secondary
-        )
-    }
-
-    private func badge(title: String, symbol: String, tint: Color) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: symbol)
+        } label: {
+            Label(providerShortTitle, systemImage: "cpu")
                 .font(.caption2)
-            Text(title)
-                .font(.caption2)
+                .foregroundStyle(.secondary)
         }
-        .foregroundStyle(tint)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
-        .background(panelFill, in: Capsule())
+        .menuStyle(.borderlessButton)
+        .fixedSize()
     }
 
-    private func scrollToLatestMessage(proxy: ScrollViewProxy, animated: Bool = true) {
+    private var thinkingMenu: some View {
+        Menu {
+            Button {
+                viewModel.thinkingMode = .fast
+            } label: {
+                Label("Fast", systemImage: viewModel.thinkingMode == .fast ? "checkmark" : "bolt")
+            }
+            Button {
+                viewModel.thinkingMode = .deep
+            } label: {
+                Label("Deep", systemImage: viewModel.thinkingMode == .deep ? "checkmark" : "brain")
+            }
+        } label: {
+            Label(viewModel.thinkingMode.rawValue, systemImage: viewModel.thinkingMode == .deep ? "brain" : "bolt")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+    }
+
+    private func sendCurrentInput() {
+        guard viewModel.isCurrentChatProviderUsable else { return }
+        let text = draftInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, viewModel.chatState != .loading else { return }
+        draftInput = ""
+        viewModel.submitChat(text: text)
+    }
+
+    private func copyToPasteboard(_ text: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+    }
+
+    private func scrollToLatest(_ proxy: ScrollViewProxy, animated: Bool = true) {
         guard let latest = viewModel.chatMessages.last else { return }
         if animated {
-            withAnimation(.easeOut(duration: 0.16)) {
+            withAnimation(.easeOut(duration: 0.18)) {
                 proxy.scrollTo(latest.id, anchor: .bottom)
             }
         } else {
@@ -272,8 +408,8 @@ struct ChatPanelView: View {
         }
     }
 
-    private func formatMessageTime(_ date: Date) -> String {
-        messageTimeFormatter.string(from: date)
+    private var latestAssistantMessageID: UUID? {
+        viewModel.chatMessages.last(where: { $0.role == .assistant })?.id
     }
 
     private var latestMessageScrollToken: String {
@@ -281,71 +417,27 @@ struct ChatPanelView: View {
         return "\(latest.id.uuidString)-\(latest.content.count)"
     }
 
-    private var sectionFill: Color {
-        colorScheme == .dark ? Color.black.opacity(0.22) : Color.white.opacity(0.54)
-    }
-
-    private var panelFill: Color {
-        colorScheme == .dark ? Color.black.opacity(0.28) : Color.white.opacity(0.68)
-    }
-
-    private var assistantBubbleFill: Color {
-        colorScheme == .dark ? Color(red: 0.13, green: 0.16, blue: 0.19) : Color(red: 0.96, green: 0.97, blue: 0.99)
-    }
-
-    private var userBubbleFill: Color {
-        colorScheme == .dark ? Color(red: 0.18, green: 0.29, blue: 0.44) : Color(red: 0.86, green: 0.91, blue: 0.98)
-    }
-
-    private func bubbleStroke(isUser: Bool) -> Color {
-        if isUser {
-            return colorScheme == .dark ? Color.white.opacity(0.10) : Color.white.opacity(0.70)
+    private var providerShortTitle: String {
+        switch viewModel.chatProviderOverride {
+        case .auto: return "Auto"
+        case .openai: return "OpenAI"
+        case .deepseek: return "DeepSeek"
+        case .kimi: return "Kimi"
         }
-        return colorScheme == .dark ? Color.white.opacity(0.08) : Color.black.opacity(0.05)
+    }
+
+    private var composerHint: String {
+        viewModel.isCurrentChatProviderUsable ? "↩︎ 发送" : "请配置 API Key"
     }
 
     private var inputFill: Color {
-        colorScheme == .dark ? Color.black.opacity(0.34) : Color.white.opacity(0.82)
-    }
-
-    private var providerSelector: some View {
-        HStack(spacing: 8) {
-            Text("回答模型")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-            Picker("", selection: $viewModel.chatProviderOverride) {
-                ForEach(viewModel.chatSelectableProviders) { provider in
-                    Text(viewModel.chatProviderOptionTitle(provider))
-                        .tag(provider)
-                        .disabled(!viewModel.isChatProviderSelectable(provider))
-                }
-            }
-            .pickerStyle(.menu)
-            .labelsHidden()
-            .accessibilityLabel("回答模型")
-            Spacer()
-        }
-    }
-
-    private var chatHintText: String {
-        viewModel.isCurrentChatProviderUsable
-            ? "支持自由提问，也可结合当前选区讨论"
-            : "当前模型未配置 API Key，请先到设置页配置"
-    }
-
-    private var chatHintColor: Color {
-        viewModel.isCurrentChatProviderUsable ? .secondary : .orange
-    }
-
-    private var messageTimeFormatter: DateFormatter {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm"
-        return formatter
+        colorScheme == .dark ? Color(nsColor: .controlBackgroundColor) : Color.white
     }
 }
 
 private struct ChatInputTextView: NSViewRepresentable {
     @Binding var text: String
+    var focusTick: Int
     var onSubmit: () -> Void
 
     func makeNSView(context: Context) -> NSScrollView {
@@ -365,14 +457,10 @@ private struct ChatInputTextView: NSViewRepresentable {
         textView.isAutomaticDashSubstitutionEnabled = false
         textView.isAutomaticSpellingCorrectionEnabled = false
         textView.drawsBackground = false
-        textView.font = preferredChatInputFont()
-        textView.textContainerInset = NSSize(width: 6, height: 7)
+        textView.font = NSFont.systemFont(ofSize: 13.5)
+        textView.textContainerInset = NSSize(width: 5, height: 6)
         textView.string = text
-
         context.coordinator.textView = textView
-        DispatchQueue.main.async {
-            textView.window?.makeFirstResponder(textView)
-        }
         return scrollView
     }
 
@@ -380,6 +468,12 @@ private struct ChatInputTextView: NSViewRepresentable {
         guard let textView = nsView.documentView as? NSTextView else { return }
         if textView.string != text {
             textView.string = text
+        }
+        if context.coordinator.lastFocusTick != focusTick {
+            context.coordinator.lastFocusTick = focusTick
+            DispatchQueue.main.async {
+                textView.window?.makeFirstResponder(textView)
+            }
         }
     }
 
@@ -390,9 +484,11 @@ private struct ChatInputTextView: NSViewRepresentable {
     final class Coordinator: NSObject, NSTextViewDelegate {
         var parent: ChatInputTextView
         weak var textView: NSTextView?
+        var lastFocusTick: Int
 
         init(_ parent: ChatInputTextView) {
             self.parent = parent
+            lastFocusTick = parent.focusTick
         }
 
         func textDidChange(_ notification: Notification) {
@@ -404,34 +500,15 @@ private struct ChatInputTextView: NSViewRepresentable {
             guard commandSelector == #selector(NSResponder.insertNewline(_:)) else {
                 return false
             }
-
-            let flags = NSApp.currentEvent?.modifierFlags ?? []
-            if flags.contains(.shift) {
+            if NSApp.currentEvent?.modifierFlags.contains(.shift) == true || textView.hasMarkedText() {
                 return false
             }
-
-            if textView.hasMarkedText() {
-                return false
-            }
-
-            let trimmed = textView.string.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else {
+            guard !textView.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 return true
             }
-
             parent.onSubmit()
-            textView.window?.makeFirstResponder(textView)
             return true
         }
-    }
-
-    private func preferredChatInputFont() -> NSFont {
-        let size: CGFloat = 13
-        let base = NSFont.systemFont(ofSize: size, weight: .regular)
-        if let descriptor = base.fontDescriptor.withDesign(.rounded) {
-            return NSFont(descriptor: descriptor, size: size) ?? base
-        }
-        return base
     }
 }
 
@@ -439,44 +516,30 @@ private struct MarkdownContentView: View {
     let markdown: String
 
     var body: some View {
-        let normalized = normalizeMarkdown(markdown)
         if let attributed = try? AttributedString(
-            markdown: normalized,
+            markdown: normalizedMarkdown,
             options: AttributedString.MarkdownParsingOptions(
                 interpretedSyntax: .full,
                 failurePolicy: .returnPartiallyParsedIfPossible
             )
         ) {
             Text(attributed)
-                .font(.system(size: 13.5, weight: .regular, design: .default))
+                .font(.system(size: 13.5))
+                .lineSpacing(3)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
         } else {
-            Text(normalized)
-                .font(.system(size: 13.5, weight: .regular, design: .default))
+            Text(normalizedMarkdown)
+                .font(.system(size: 13.5))
+                .lineSpacing(3)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
-    private func normalizeMarkdown(_ raw: String) -> String {
-        let t = raw.replacingOccurrences(of: "\r\n", with: "\n")
-        let trimmed = t.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        guard !trimmed.contains("\n"), trimmed.count > 220 else {
-            return trimmed
-        }
-
-        // Only apply lightweight line breaking for very long single-line Chinese output.
-        if trimmed.contains("。") || trimmed.contains("；") || trimmed.contains("！") || trimmed.contains("？") {
-            return trimmed
-                .replacingOccurrences(of: "。", with: "。\n")
-                .replacingOccurrences(of: "；", with: "；\n")
-                .replacingOccurrences(of: "！", with: "！\n")
-                .replacingOccurrences(of: "？", with: "？\n")
-                .replacingOccurrences(of: "\n\n\n", with: "\n\n")
-        }
-
-        return trimmed
+    private var normalizedMarkdown: String {
+        markdown
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

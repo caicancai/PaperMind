@@ -18,6 +18,7 @@ struct PaperMindApp: App {
                 }
         }
         .windowStyle(.hiddenTitleBar)
+        .windowToolbarStyle(.unified)
         .commands {
             CommandGroup(replacing: .appSettings) {
                 Button("Settings...") {

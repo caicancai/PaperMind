@@ -4,6 +4,7 @@ struct ReaderPaneView: View {
     @ObservedObject var viewModel: AppViewModel
     @State private var selectionRect: CGRect?
     @State private var showFullTranslation: Bool = false
+    @State private var showTranslationDetails: Bool = false
     @State private var outlineItems: [ReaderOutlineItem] = []
     @State private var showOutlinePanel: Bool = true
     @State private var outlinePanelWidth: CGFloat = 220
@@ -14,26 +15,21 @@ struct ReaderPaneView: View {
     @State private var outlineJumpTick: Int = 0
 
     var body: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 0) {
             if let paper = viewModel.selectedPaper {
-                VStack(spacing: 8) {
+                VStack(spacing: 0) {
                     readerHeader(paper: paper)
+                    Divider()
 
                     GeometryReader { proxy in
                         let clampedOutlineWidth = clampedOutlineWidth(for: proxy.size.width)
-                        HStack(spacing: 8) {
+                        HStack(spacing: 0) {
                             if showOutlinePanel {
                                 outlinePanel
                                     .frame(width: clampedOutlineWidth)
 
-                                Rectangle()
-                                    .fill(Color.primary.opacity(0.08))
-                                    .frame(width: 4)
-                                    .overlay(
-                                        Capsule()
-                                            .fill(Color.primary.opacity(0.22))
-                                            .frame(width: 2, height: 42)
-                                    )
+                                Divider()
+                                    .frame(width: 5)
                                     .contentShape(Rectangle())
                                     .gesture(
                                         DragGesture()
@@ -53,14 +49,15 @@ struct ReaderPaneView: View {
                             }
 
                             GeometryReader { readerProxy in
-                                let cardWidth = popupWidth(for: readerProxy.size.width)
+                                let popoverWidth = selectionPopoverWidth(for: readerProxy.size.width)
+                                let popoverHeight = selectionPopoverHeight
 
                                 ZStack(alignment: .topLeading) {
                                     PDFReaderView(
                                         fileURL: paper.fileURL,
-                                        threadAnchors: [],
-                                        focusedThreadID: nil,
-                                        focusThreadTick: 0,
+                                        threadAnchors: viewModel.notes,
+                                        focusedThreadID: viewModel.focusedThreadID,
+                                        focusThreadTick: viewModel.focusThreadTick,
                                         jumpToPageIndex: outlineJumpPageIndex,
                                         jumpToPageTick: outlineJumpTick,
                                         jumpToOutlineItemID: outlineJumpItemID,
@@ -76,19 +73,19 @@ struct ReaderPaneView: View {
                                             outlineSelectedItemID = nil
                                         }
                                     } onThreadAnnotationTap: { threadID in
-                                        _ = threadID
+                                        viewModel.handleThreadAnnotationTapped(threadID)
                                     } onOutlineChange: { items in
                                         outlineItems = items
                                     }
 
                                     if viewModel.currentSelection != nil {
-                                        floatingTranslationCard
-                                            .frame(width: cardWidth)
+                                        selectionPopover
+                                            .frame(width: popoverWidth)
                                             .position(
                                                 popupPosition(
                                                     in: readerProxy.size,
-                                                    popupWidth: cardWidth,
-                                                    popupHeight: popupHeight
+                                                    popupWidth: popoverWidth,
+                                                    popupHeight: popoverHeight
                                                 )
                                             )
                                             .transition(.opacity)
@@ -111,9 +108,9 @@ struct ReaderPaneView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .padding(4)
         .onChange(of: viewModel.selectedTextPreview) { _ in
             showFullTranslation = false
+            showTranslationDetails = false
         }
         .onChange(of: viewModel.selectedPaperID) { _ in
             outlineItems = []
@@ -127,12 +124,12 @@ struct ReaderPaneView: View {
         }
     }
 
-    private func popupWidth(for availableWidth: CGFloat) -> CGFloat {
-        min(360, max(280, availableWidth - 28))
+    private func selectionPopoverWidth(for availableWidth: CGFloat) -> CGFloat {
+        min(440, max(320, availableWidth - 28))
     }
 
-    private var popupHeight: CGFloat {
-        240
+    private var selectionPopoverHeight: CGFloat {
+        showTranslationDetails ? 258 : 42
     }
 
     private func outlineWidthRange(totalWidth: CGFloat) -> ClosedRange<CGFloat> {
@@ -147,22 +144,28 @@ struct ReaderPaneView: View {
     }
 
     private func readerHeader(paper: Paper) -> some View {
-        HStack(spacing: 10) {
-            Text(paper.title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-
-            Spacer()
-
+        HStack(spacing: 8) {
             Button {
                 showOutlinePanel.toggle()
             } label: {
-                Label(showOutlinePanel ? "隐藏目录" : "显示目录", systemImage: "sidebar.left")
+                Label("目录", systemImage: "list.bullet.indent")
             }
-            .buttonStyle(.bordered)
-            .font(.caption)
+            .buttonStyle(.borderless)
+
+            Spacer()
+
+            Text("第 \(viewModel.currentReaderPageIndex + 1) 页")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            if !viewModel.notes.isEmpty {
+                Label("\(viewModel.notes.count)", systemImage: "highlighter")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
+        .padding(.horizontal, 12)
+        .frame(height: 36)
     }
 
     private var outlinePanel: some View {
@@ -237,7 +240,7 @@ struct ReaderPaneView: View {
             }
         }
         .padding(10)
-        .background(Color.white.opacity(0.35), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(Color(nsColor: .controlBackgroundColor).opacity(0.55))
     }
 
     private var activeOutlineItemID: String? {
@@ -251,28 +254,81 @@ struct ReaderPaneView: View {
             .id
     }
 
-    private var floatingTranslationCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("翻译")
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                Spacer()
+    private var selectionPopover: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 2) {
+                selectionAction("翻译", systemImage: "character.book.closed") {
+                    withAnimation(.easeOut(duration: 0.14)) {
+                        showTranslationDetails.toggle()
+                    }
+                }
+
+                selectionAction("Add Chat", systemImage: "bubble.left.and.bubble.right") {
+                    viewModel.prepareChatDraftFromSelection()
+                }
+
+                selectionAction("笔记", systemImage: "note.text.badge.plus") {
+                    Task { await viewModel.createNoteFromCurrentSelection() }
+                }
+
+                if viewModel.isMathSelection {
+                    selectionAction("公式", systemImage: "function") {
+                        viewModel.submitFormulaExplanation()
+                    }
+                }
+
+                Spacer(minLength: 4)
+
                 Button {
                     viewModel.updateSelection(text: "", pageIndex: 0)
                     selectionRect = nil
                 } label: {
                     Image(systemName: "xmark")
                         .font(.caption)
+                        .frame(width: 24, height: 24)
                 }
                 .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
             }
+            .padding(.horizontal, 7)
+            .frame(height: 42)
 
-            HStack(spacing: 6) {
-                Text("目标语言")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+            if showTranslationDetails {
+                Divider()
+                translationPanel
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .stroke(Color.primary.opacity(0.12), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.16), radius: 10, y: 4)
+    }
 
+    private func selectionAction(
+        _ title: String,
+        systemImage: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(.system(size: 11.5, weight: .medium))
+                .padding(.horizontal, 7)
+                .frame(height: 28)
+        }
+        .buttonStyle(.plain)
+        .contentShape(Rectangle())
+    }
+
+    private var translationPanel: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("翻译")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                Spacer()
                 Picker("", selection: Binding(
                     get: { viewModel.translationTargetLanguage },
                     set: { newValue in
@@ -286,73 +342,38 @@ struct ReaderPaneView: View {
                 }
                 .pickerStyle(.menu)
                 .labelsHidden()
-                .accessibilityLabel("目标语言")
-                .font(.caption)
-
-                Spacer()
-            }
-
-            if !viewModel.selectedTextPreview.isEmpty {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(viewModel.selectedTextPreview)
-                        .font(.caption)
-                        .lineLimit(2)
-                        .foregroundStyle(.secondary)
-                    if viewModel.isMathSelection {
-                        Text("检测到公式")
-                            .font(.caption2)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(.blue.opacity(0.14), in: Capsule())
-                    }
-                }
+                .controlSize(.small)
             }
 
             Group {
                 switch viewModel.translationState {
                 case .idle:
-                    Text("正在准备翻译...")
-                        .font(.callout)
+                    Text("准备翻译…")
+                        .foregroundStyle(.secondary)
                 case .loading:
                     HStack(spacing: 6) {
                         ProgressView()
                             .controlSize(.small)
-                        Text("翻译中...")
+                        Text("翻译中…")
+                            .foregroundStyle(.secondary)
                     }
-                    .font(.callout)
                 case .success:
                     translationResultView
                 case .failure(let message):
-                    Text(message)
-                        .font(.callout)
-                        .foregroundStyle(.red)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(message)
+                            .foregroundStyle(.red)
+                        Button("重试") {
+                            Task { await viewModel.translateSelection() }
+                        }
+                    }
                 }
             }
+            .font(.callout)
             .frame(maxWidth: .infinity, alignment: .leading)
-
-            HStack {
-                Button("重试翻译") {
-                    Task { await viewModel.translateSelection() }
-                }
-                Button("Add Chat") {
-                    viewModel.prepareChatDraftFromSelection()
-                }
-                Button("解释公式") {
-                    Task { await viewModel.explainFormulaUsingSelection() }
-                }
-                .disabled(viewModel.currentSelection == nil)
-
-                Spacer()
-            }
-            .font(.caption)
         }
-        .padding(12)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(.gray.opacity(0.25), lineWidth: 1)
-        )
-        .shadow(color: .black.opacity(0.12), radius: 8, y: 4)
+        .padding(10)
+        .frame(height: 215, alignment: .top)
     }
 
     @ViewBuilder
@@ -368,11 +389,8 @@ struct ReaderPaneView: View {
                     .lineSpacing(3)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 6)
-                    .background(Color.white.opacity(0.45), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
             }
-            .frame(maxHeight: showFullTranslation ? 180 : 120)
+            .frame(maxHeight: showFullTranslation ? 160 : 130)
 
             if isLong {
                 Button(showFullTranslation ? "收起" : "展开全文") {

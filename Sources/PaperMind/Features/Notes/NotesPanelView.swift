@@ -2,160 +2,234 @@ import SwiftUI
 
 struct NotesPanelView: View {
     @ObservedObject var viewModel: AppViewModel
+    @State private var searchText = ""
+    @State private var kindFilter: NoteKind?
+    @State private var titleDraft = ""
+    @State private var contentDraft = ""
+    @State private var kindDraft: NoteKind = .insight
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             header
-            createThreadSection
+            filters
+            noteList
             Divider()
-            threadListSection
-            Divider()
-            activeThreadSection
+            noteEditor
+        }
+        .onAppear {
+            syncEditor()
+        }
+        .onChange(of: viewModel.activeThreadID) { _ in
+            syncEditor()
         }
     }
 
     private var header: some View {
-        HStack {
-            Text("评论")
-                .font(.headline)
-
-            Spacer()
-
-            Toggle("显示已解决", isOn: $viewModel.showResolvedThreads)
-                .toggleStyle(.switch)
-                .labelsHidden()
-            Text("已解决")
+        HStack(spacing: 8) {
+            Text("\(viewModel.notes.count) 条笔记")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            Spacer()
+            Button {
+                Task { await viewModel.createNoteFromCurrentSelection() }
+            } label: {
+                Image(systemName: "highlighter")
+            }
+            .disabled(viewModel.currentSelection == nil)
+            .help("保存当前选区")
+
+            Button {
+                Task { await viewModel.createFreeNote() }
+            } label: {
+                Image(systemName: "square.and.pencil")
+            }
+            .help("新建笔记")
         }
+        .buttonStyle(.borderless)
     }
 
-    private var createThreadSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("新建评论线程")
-                .font(.subheadline)
-
-            TextField("标题（可选）", text: $viewModel.newThreadTitleDraft)
+    private var filters: some View {
+        HStack(spacing: 8) {
+            TextField("搜索标题、正文或原文", text: $searchText)
                 .textFieldStyle(.roundedBorder)
 
-            TextEditor(text: $viewModel.newThreadCommentDraft)
-                .frame(height: 70)
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(.gray.opacity(0.3)))
-
-            HStack {
-                Button("从选区填充") {
-                    viewModel.fillDraftFromSelection()
+            Picker("类型", selection: $kindFilter) {
+                Text("全部").tag(NoteKind?.none)
+                ForEach(NoteKind.allCases) { kind in
+                    Text(kind.title).tag(NoteKind?.some(kind))
                 }
-                .disabled(viewModel.currentSelection == nil)
-
-                Button("创建评论") {
-                    Task { await viewModel.createCommentThreadFromDraft() }
-                }
-
-                Spacer()
             }
-
-            statusView
+            .pickerStyle(.menu)
+            .labelsHidden()
+            .frame(width: 82)
         }
     }
 
-    private var threadListSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("线程")
-                .font(.subheadline)
-
-            List(selection: Binding(
-                get: { viewModel.activeThreadID },
-                set: { viewModel.focusThread($0) }
-            )) {
-                ForEach(viewModel.visibleThreads) { thread in
-                    HStack(spacing: 8) {
-                        Circle()
-                            .fill(thread.status == .open ? Color.orange : Color.green)
-                            .frame(width: 8, height: 8)
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(thread.title)
-                                .lineLimit(1)
-                            Text("P\((thread.pageIndex ?? 0) + 1) · \(thread.comments.count) 条")
+    private var noteList: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 7) {
+                if filteredNotes.isEmpty {
+                    VStack(spacing: 7) {
+                        Image(systemName: "note.text")
+                            .font(.title2)
+                            .foregroundStyle(.secondary)
+                        Text(viewModel.notes.isEmpty ? "还没有笔记" : "没有匹配的笔记")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                        if viewModel.notes.isEmpty {
+                            Text("在 PDF 中选中文字，然后点击“保存笔记”。")
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(.tertiary)
+                                .multilineTextAlignment(.center)
                         }
-
-                        Spacer()
                     }
-                    .contentShape(Rectangle())
-                    .tag(thread.id)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 24)
+                } else {
+                    ForEach(filteredNotes) { note in
+                        noteCard(note)
+                    }
                 }
             }
-            .frame(minHeight: 130)
+            .padding(3)
         }
+        .frame(minHeight: 130, maxHeight: 260)
     }
 
-    private var activeThreadSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("线程详情")
-                .font(.subheadline)
+    private func noteCard(_ note: Note) -> some View {
+        let isActive = note.id == viewModel.activeThreadID
+        return Button {
+            viewModel.focusThread(note.id)
+        } label: {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    Label(note.kind.title, systemImage: note.kind.systemImage)
+                        .font(.caption2)
+                        .foregroundStyle(kindColor(note.kind))
+                    Spacer()
+                    if let pageIndex = note.pageIndex {
+                        Text("P\(pageIndex + 1)")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
 
-            if let thread = viewModel.activeThread {
-                HStack {
-                    Text(thread.status == .open ? "未解决" : "已解决")
+                Text(note.title)
+                    .font(.system(size: 13, weight: .semibold))
+                    .lineLimit(1)
+                    .foregroundStyle(.primary)
+
+                if let preview = notePreview(note) {
+                    Text(preview)
                         .font(.caption)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background((thread.status == .open ? Color.orange : Color.green).opacity(0.15))
-                        .clipShape(Capsule())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                }
+            }
+            .padding(9)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                isActive ? Color.accentColor.opacity(0.12) : Color.clear,
+                in: RoundedRectangle(cornerRadius: 9, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .stroke(isActive ? Color.accentColor.opacity(0.45) : Color.clear, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private var noteEditor: some View {
+        if let note = viewModel.activeThread {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("编辑笔记")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                    Spacer()
+                    statusView
+                }
+
+                HStack(spacing: 8) {
+                    Picker("类型", selection: $kindDraft) {
+                        ForEach(NoteKind.allCases) { kind in
+                            Label(kind.title, systemImage: kind.systemImage).tag(kind)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .frame(width: 104)
+
+                    TextField("笔记标题", text: $titleDraft)
+                        .textFieldStyle(.roundedBorder)
+                }
+
+                if let quote = note.quote, !quote.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("原文")
+                                .font(.caption2)
+                                .fontWeight(.semibold)
+                            Spacer()
+                            if note.anchorRect != nil {
+                                Label("已锚定", systemImage: "link")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        Text(quote)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(3)
+                            .textSelection(.enabled)
+                    }
+                    .padding(8)
+                    .background(panelFill, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+
+                TextEditor(text: $contentDraft)
+                    .font(.callout)
+                    .scrollContentBackground(.hidden)
+                    .padding(6)
+                    .frame(minHeight: 90)
+                    .background(inputFill, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                    )
+
+                HStack {
+                    Button("删除", role: .destructive) {
+                        Task { await viewModel.deleteNote(id: note.id) }
+                    }
+                    .buttonStyle(.bordered)
 
                     Spacer()
 
-                    Button(thread.status == .open ? "标记已解决" : "恢复为未解决") {
-                        Task { await viewModel.setThreadResolved(thread.status == .open, threadID: thread.id) }
-                    }
-
-                    Button("删除") {
-                        Task { await viewModel.deleteNote(id: thread.id) }
-                    }
-                }
-
-                if let quote = thread.quote, !quote.isEmpty {
-                    Text("引用：\(quote)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(3)
-                }
-
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 8) {
-                        ForEach(thread.comments) { comment in
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(comment.role == .author ? "作者" : "回复")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                                Text(comment.content)
-                                    .font(.callout)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(8)
-                            .background(comment.role == .author ? .blue.opacity(0.08) : .gray.opacity(0.1))
-                            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    Button {
+                        Task {
+                            await viewModel.updateNote(
+                                id: note.id,
+                                title: titleDraft,
+                                content: contentDraft,
+                                kind: kindDraft
+                            )
                         }
+                    } label: {
+                        Label("保存", systemImage: "checkmark")
                     }
+                    .buttonStyle(.borderedProminent)
                 }
-                .frame(minHeight: 120, maxHeight: 200)
-
-                HStack {
-                    TextField("回复此线程...", text: $viewModel.replyDraft)
-                        .textFieldStyle(.roundedBorder)
-
-                    Button("发送") {
-                        Task { await viewModel.addReplyToActiveThread() }
-                    }
-                }
-            } else {
-                Text("请选择一个线程")
-                    .foregroundStyle(.secondary)
+                .controlSize(.small)
             }
+        } else {
+            Text("选择一条笔记进行编辑")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
@@ -165,13 +239,66 @@ struct NotesPanelView: View {
         case .idle:
             EmptyView()
         case .loading:
-            HStack { ProgressView(); Text("保存中...") }
+            ProgressView()
+                .controlSize(.small)
         case .success:
-            Text("已保存")
+            Label("已保存", systemImage: "checkmark.circle.fill")
+                .font(.caption2)
                 .foregroundStyle(.green)
         case .failure(let message):
             Text(message)
+                .font(.caption2)
                 .foregroundStyle(.red)
+                .lineLimit(1)
         }
+    }
+
+    private var filteredNotes: [Note] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return viewModel.notes.filter { note in
+            let matchesKind = kindFilter == nil || note.kind == kindFilter
+            guard matchesKind else { return false }
+            guard !query.isEmpty else { return true }
+            return note.title.lowercased().contains(query)
+                || note.content.lowercased().contains(query)
+                || (note.quote?.lowercased().contains(query) ?? false)
+        }
+    }
+
+    private func syncEditor() {
+        guard let note = viewModel.activeThread else {
+            titleDraft = ""
+            contentDraft = ""
+            kindDraft = .insight
+            return
+        }
+        titleDraft = note.title
+        contentDraft = note.content
+        kindDraft = note.kind
+    }
+
+    private func notePreview(_ note: Note) -> String? {
+        let content = note.content.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !content.isEmpty { return content }
+        return note.quote?.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func kindColor(_ kind: NoteKind) -> Color {
+        switch kind {
+        case .insight: return .blue
+        case .question: return .orange
+        case .conclusion: return .green
+        case .method: return .purple
+        case .experiment: return .indigo
+        case .toRead: return .pink
+        }
+    }
+
+    private var panelFill: Color {
+        colorScheme == .dark ? Color.white.opacity(0.06) : Color.white.opacity(0.68)
+    }
+
+    private var inputFill: Color {
+        colorScheme == .dark ? Color.black.opacity(0.32) : Color.white.opacity(0.82)
     }
 }

@@ -1,59 +1,110 @@
 import SwiftUI
+import AppKit
 
 struct RootView: View {
     @ObservedObject var viewModel: AppViewModel
 
     var body: some View {
-        ZStack {
-            LinearGradient(
-                colors: backgroundGradientColors,
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
-
-            NavigationSplitView {
+        HSplitView {
+            if viewModel.isLibraryVisible {
                 LibraryView(viewModel: viewModel)
-                    .navigationSplitViewColumnWidth(min: 180, ideal: 240, max: 300)
-                    .padding(10)
-                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            } content: {
-                ReaderPaneView(viewModel: viewModel)
-                    .navigationSplitViewColumnWidth(min: 560, ideal: 760)
-                    .padding(8)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            } detail: {
-                SidebarView(viewModel: viewModel)
-                    .navigationSplitViewColumnWidth(min: 300, ideal: 340, max: 440)
-                    .padding(10)
-                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .frame(minWidth: 190, idealWidth: 224, maxWidth: 280)
+                    .background(.ultraThinMaterial)
             }
-            .navigationSplitViewStyle(.balanced)
-            .padding(12)
+
+            ReaderPaneView(viewModel: viewModel)
+                .frame(minWidth: 560, maxWidth: .infinity, maxHeight: .infinity)
+
+            if viewModel.isInspectorVisible {
+                SidebarView(viewModel: viewModel)
+                    .frame(minWidth: 300, idealWidth: 340, maxWidth: 420)
+                    .background(.regularMaterial)
+            }
         }
-        .frame(minWidth: 1080, minHeight: 760)
+        .background(Color(nsColor: .windowBackgroundColor))
+        .frame(minWidth: 980, minHeight: 680)
         .preferredColorScheme(preferredColorScheme)
+        .toolbar {
+            ToolbarItemGroup(placement: .navigation) {
+                Button {
+                    viewModel.isLibraryVisible.toggle()
+                } label: {
+                    Image(systemName: "sidebar.left")
+                }
+                .help(viewModel.isLibraryVisible ? "隐藏论文库" : "显示论文库")
+
+                if let paper = viewModel.selectedPaper {
+                    Text(paper.title)
+                        .font(.headline)
+                        .lineLimit(1)
+                        .frame(maxWidth: 420, alignment: .leading)
+                } else {
+                    Text("PaperMind")
+                        .font(.headline)
+                }
+            }
+
+            ToolbarItemGroup(placement: .primaryAction) {
+                inspectorButton(
+                    section: .chat,
+                    symbol: "bubble.left.and.bubble.right",
+                    help: "AI 讨论"
+                )
+                .keyboardShortcut("a", modifiers: [.command, .shift])
+
+                inspectorButton(
+                    section: .notes,
+                    symbol: "note.text",
+                    help: "论文笔记"
+                )
+                .keyboardShortcut("n", modifiers: [.command, .shift])
+
+                Menu {
+                    Picker("外观", selection: Binding(
+                        get: { viewModel.appTheme },
+                        set: { viewModel.applyTheme($0) }
+                    )) {
+                        Label("浅色", systemImage: "sun.max").tag(AppTheme.light)
+                        Label("深色", systemImage: "moon").tag(AppTheme.dark)
+                    }
+
+                    Divider()
+
+                    Button("AI 设置…") {
+                        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+                .help("更多")
+            }
+        }
+    }
+
+    private func inspectorButton(
+        section: SidebarSection,
+        symbol: String,
+        help: String
+    ) -> some View {
+        Button {
+            if viewModel.isInspectorVisible, viewModel.sidebarSection == section {
+                viewModel.isInspectorVisible = false
+            } else {
+                viewModel.sidebarSection = section
+                viewModel.isInspectorVisible = true
+            }
+        } label: {
+            Image(systemName: symbol)
+                .symbolVariant(
+                    viewModel.isInspectorVisible && viewModel.sidebarSection == section
+                    ? .fill
+                    : .none
+                )
+        }
+        .help(help)
     }
 
     private var preferredColorScheme: ColorScheme {
-        switch viewModel.appTheme {
-        case .light: return .light
-        case .dark: return .dark
-        }
-    }
-
-    private var backgroundGradientColors: [Color] {
-        switch viewModel.appTheme {
-        case .light:
-            return [
-                Color(red: 0.96, green: 0.98, blue: 1.00),
-                Color(red: 0.96, green: 0.97, blue: 0.95)
-            ]
-        case .dark:
-            return [
-                Color(red: 0.12, green: 0.13, blue: 0.15),
-                Color(red: 0.09, green: 0.10, blue: 0.12)
-            ]
-        }
+        viewModel.appTheme == .light ? .light : .dark
     }
 }
