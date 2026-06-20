@@ -5,11 +5,17 @@ All notable changes to this project are documented in this file.
 ## [Unreleased]
 
 ### Added
+- Added a Manifest V3 Chrome extension that takes over the current PDF tab without importing or
+  opening a new window, with lazy PDF.js rendering, embedded/inferred outlines, selection
+  translation, formula explanation, streaming AI chat, provider/thinking controls, and themes.
+- Added real Chromium end-to-end tests with generated PDFs and mocked translation/AI streams.
 - Reintroduced personal paper notes with PDF selection anchors, categories, search, editing, and highlight navigation.
 - Added saving AI responses as anchored notes.
 - Added chat controls for stopping generation, regenerating, copying responses, and starting a new conversation.
 
 ### Changed
+- Improved Chrome extension translation with true AI-provider streaming when configured, Google
+  fallback, tighter line spacing, PDF line-wrap cleanup, and hyphenated-word reconstruction.
 - Redesigned the main window around a native macOS toolbar, library sidebar, PDF-first reading canvas, and collapsible inspector.
 - Reworked the selection popup into a compact action bar with on-demand translation details.
 - Rebuilt the AI composer with inline provider and Fast/Deep controls, selection attachments, and guided empty-state prompts.

@@ -72,6 +72,23 @@ swift build
 open .build/debug/PaperMind
 ```
 
+## Chrome Extension
+
+The repository also includes a Chrome extension. Open a PDF in the current browser tab and click
+PaperMind to take over that same tab—no import or new window required. It supports lazy PDF
+rendering, embedded/inferred outlines, selection translation, formula explanation, and full
+streaming AI chat controls:
+
+```bash
+cd extension
+npm install
+npm run build
+```
+
+Enable developer mode at `chrome://extensions` and load `extension/dist`. See
+[`extension/README.md`](extension/README.md) for installation and automated browser tests.
+The browser version intentionally excludes notes and chat persistence.
+
 ## Package DMG
 
 ```bash

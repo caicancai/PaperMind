@@ -69,6 +69,23 @@ swift build
 open .build/debug/PaperMind
 ```
 
+## Chrome 扩展 MVP
+
+仓库同时包含独立的 Chrome 扩展版本。在浏览器当前标签页打开 PDF 后，点击扩展即可
+直接在同一标签页进入 PaperMind，无需导入，也不会打开新窗口。支持长 PDF 懒加载、
+目录与章节推断、划词翻译、公式解释和完整 AI 对话控制：
+
+```bash
+cd extension
+npm install
+npm run build
+```
+
+然后在 `chrome://extensions` 中开启开发者模式，加载 `extension/dist`。详细说明见
+[`extension/README.md`](extension/README.md)。
+
+浏览器版按设计不提供笔记，也不持久化聊天记录。
+
 ## 打包 DMG
 
 ```bash

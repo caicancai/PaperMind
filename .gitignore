@@ -9,3 +9,6 @@ DerivedData/
 .env.local
 
 /release/stage
+
+/extension/node_modules
+/extension/dist

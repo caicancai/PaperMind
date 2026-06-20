@@ -1,0 +1,26 @@
+{
+  "name": "papermind-extension",
+  "private": true,
+  "version": "0.2.1",
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite",
+    "typecheck": "tsc --noEmit",
+    "test:e2e": "npm run build && node tests/e2e.mjs",
+    "test": "npm run typecheck && npm run test:e2e"
+  },
+  "dependencies": {
+    "dompurify": "^3.4.11",
+    "marked": "^15.0.12",
+    "pdfjs-dist": "^5.3.31"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.0",
+    "@types/chrome": "^0.2.0",
+    "@types/node": "^26.0.0",
+    "pdf-lib": "^1.17.1",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5"
+  }
+}
