@@ -49,7 +49,7 @@ struct PDFReaderView: NSViewRepresentable {
         view.autoScales = true
         view.displaysAsBook = false
         view.displayMode = .singlePageContinuous
-        view.backgroundColor = NSColor.controlBackgroundColor
+        view.backgroundColor = PaperTheme.nsCanvas(for: view.effectiveAppearance)
         view.document = makeDocument(from: fileURL)
 
         context.coordinator.bind(to: view)
@@ -59,6 +59,7 @@ struct PDFReaderView: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: PDFView, context: Context) {
+        nsView.backgroundColor = PaperTheme.nsCanvas(for: nsView.effectiveAppearance)
         let currentURL = nsView.document?.documentURL?.standardizedFileURL
         if currentURL != fileURL.standardizedFileURL {
             nsView.document = makeDocument(from: fileURL)

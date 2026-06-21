@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ReaderPaneView: View {
     @ObservedObject var viewModel: AppViewModel
+    @Environment(\.colorScheme) private var colorScheme
     @State private var selectionRect: CGRect?
     @State private var showFullTranslation: Bool = false
     @State private var showTranslationDetails: Bool = false
@@ -108,6 +109,7 @@ struct ReaderPaneView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+        .background(PaperTheme.canvas(for: colorScheme))
         .onChange(of: viewModel.selectedTextPreview) { _ in
             showFullTranslation = false
             showTranslationDetails = false
@@ -166,6 +168,7 @@ struct ReaderPaneView: View {
         }
         .padding(.horizontal, 12)
         .frame(height: 36)
+        .paperSurface()
     }
 
     private var outlinePanel: some View {
@@ -229,7 +232,7 @@ struct ReaderPaneView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .background(
                                     RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                        .fill(activeOutlineItemID == item.id ? Color.accentColor.opacity(0.14) : .clear)
+                                        .fill(activeOutlineItemID == item.id ? PaperTheme.selection(for: colorScheme) : .clear)
                                 )
                             }
                             .buttonStyle(.plain)
@@ -240,7 +243,7 @@ struct ReaderPaneView: View {
             }
         }
         .padding(10)
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.55))
+        .paperSurface()
     }
 
     private var activeOutlineItemID: String? {
@@ -299,10 +302,13 @@ struct ReaderPaneView: View {
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .background(
+            PaperTheme.raisedSheet(for: colorScheme),
+            in: RoundedRectangle(cornerRadius: 9, style: .continuous)
+        )
         .overlay(
             RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .stroke(Color.primary.opacity(0.12), lineWidth: 1)
+                .stroke(PaperTheme.rule(for: colorScheme).opacity(0.7), lineWidth: 1)
         )
         .shadow(color: .black.opacity(0.16), radius: 10, y: 4)
     }

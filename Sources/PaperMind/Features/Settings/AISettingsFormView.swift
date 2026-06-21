@@ -50,7 +50,7 @@ struct AISettingsFormView: View {
                         viewModel.saveAIConfiguration()
                     }
                     .buttonStyle(.borderedProminent)
-                    .tint(Color(red: 0.11, green: 0.52, blue: 0.78))
+                    .tint(PaperTheme.accent)
 
                     aiConfigStatus
                     Spacer()
@@ -193,11 +193,11 @@ struct AISettingsFormView: View {
     }
 
     private var sidebarFill: Color {
-        colorScheme == .dark ? Color.black.opacity(0.22) : Color.white.opacity(0.72)
+        PaperTheme.sheet(for: colorScheme)
     }
 
     private var detailFill: Color {
-        colorScheme == .dark ? Color.black.opacity(0.24) : Color.white.opacity(0.74)
+        PaperTheme.raisedSheet(for: colorScheme)
     }
 
     private var defaultProviderSelector: some View {
@@ -216,7 +216,7 @@ struct AISettingsFormView: View {
                             Capsule()
                                 .fill(
                                     viewModel.aiProvider == provider
-                                    ? Color(red: 0.12, green: 0.48, blue: 0.92)
+                                    ? PaperTheme.accent
                                     : Color.clear
                                 )
                         )

@@ -3,6 +3,7 @@ import UniformTypeIdentifiers
 
 struct LibraryView: View {
     @ObservedObject var viewModel: AppViewModel
+    @Environment(\.colorScheme) private var colorScheme
     @State private var isImporterPresented = false
     @State private var searchText = ""
 
@@ -22,6 +23,7 @@ struct LibraryView: View {
             guard case .success(let urls) = result, let url = urls.first else { return }
             Task { await viewModel.importPaper(from: url) }
         }
+        .background(PaperTheme.sheet(for: colorScheme))
     }
 
     private var libraryHeader: some View {

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SidebarView: View {
     @ObservedObject var viewModel: AppViewModel
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(spacing: 0) {
@@ -37,5 +38,6 @@ struct SidebarView: View {
             }
             .padding(12)
         }
+        .background(PaperTheme.raisedSheet(for: colorScheme))
     }
 }

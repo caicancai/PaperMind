@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsWindowView: View {
     @ObservedObject var viewModel: AppViewModel
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -19,7 +20,8 @@ struct SettingsWindowView: View {
             Spacer(minLength: 0)
         }
         .padding(20)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(PaperTheme.canvas(for: colorScheme))
+        .tint(PaperTheme.accent)
         .frame(minWidth: 700, minHeight: 460)
     }
 }

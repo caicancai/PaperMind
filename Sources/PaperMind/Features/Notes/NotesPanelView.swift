@@ -131,12 +131,15 @@ struct NotesPanelView: View {
             .padding(9)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
-                isActive ? Color.accentColor.opacity(0.12) : Color.clear,
+                isActive ? PaperTheme.selection(for: colorScheme) : PaperTheme.sheet(for: colorScheme).opacity(0.7),
                 in: RoundedRectangle(cornerRadius: 9, style: .continuous)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .stroke(isActive ? Color.accentColor.opacity(0.45) : Color.clear, lineWidth: 1)
+                    .stroke(
+                        isActive ? PaperTheme.accent.opacity(0.6) : PaperTheme.rule(for: colorScheme).opacity(0.35),
+                        lineWidth: 1
+                    )
             )
         }
         .buttonStyle(.plain)
@@ -295,10 +298,10 @@ struct NotesPanelView: View {
     }
 
     private var panelFill: Color {
-        colorScheme == .dark ? Color.white.opacity(0.06) : Color.white.opacity(0.68)
+        PaperTheme.sheet(for: colorScheme)
     }
 
     private var inputFill: Color {
-        colorScheme == .dark ? Color.black.opacity(0.32) : Color.white.opacity(0.82)
+        PaperTheme.raisedSheet(for: colorScheme)
     }
 }
