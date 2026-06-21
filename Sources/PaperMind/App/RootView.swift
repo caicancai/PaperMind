@@ -3,13 +3,14 @@ import AppKit
 
 struct RootView: View {
     @ObservedObject var viewModel: AppViewModel
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         HSplitView {
             if viewModel.isLibraryVisible {
                 LibraryView(viewModel: viewModel)
                     .frame(minWidth: 190, idealWidth: 224, maxWidth: 280)
-                    .background(.ultraThinMaterial)
+                    .paperSurface()
             }
 
             ReaderPaneView(viewModel: viewModel)
@@ -18,12 +19,14 @@ struct RootView: View {
             if viewModel.isInspectorVisible {
                 SidebarView(viewModel: viewModel)
                     .frame(minWidth: 300, idealWidth: 340, maxWidth: 420)
-                    .background(.regularMaterial)
+                    .paperSurface(raised: true)
             }
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(PaperTheme.canvas(for: colorScheme))
         .frame(minWidth: 980, minHeight: 680)
         .preferredColorScheme(preferredColorScheme)
+        .tint(PaperTheme.accent)
+        .foregroundStyle(PaperTheme.ink(for: colorScheme))
         .toolbar {
             ToolbarItemGroup(placement: .navigation) {
                 Button {

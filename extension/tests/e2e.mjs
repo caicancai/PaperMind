@@ -112,6 +112,20 @@ try {
   });
   await page.reload();
 
+  const lightPaperTheme = await page.evaluate(() => {
+    const style = getComputedStyle(document.documentElement);
+    return {
+      canvas: style.getPropertyValue("--paper-canvas").trim(),
+      sheet: style.getPropertyValue("--paper-sheet").trim(),
+      accent: style.getPropertyValue("--accent").trim()
+    };
+  });
+  assert.deepEqual(lightPaperTheme, {
+    canvas: "#e8e0d1",
+    sheet: "#f7f1e5",
+    accent: "#8c4930"
+  });
+
   await page.locator("#document-status").filter({ hasText: "8 页" }).waitFor();
   assert.equal(await page.locator(".pdf-page").count(), 8, "all page placeholders must exist");
   const firstCanvas = page.locator('.pdf-page[data-page-index="0"] canvas');
@@ -201,6 +215,12 @@ try {
   await page.locator("#theme").selectOption("dark");
   await page.locator('[data-action="save"]').click();
   assert.equal(await page.locator("html").getAttribute("data-theme"), "dark");
+  assert.equal(
+    await page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue("--paper-canvas").trim()
+    ),
+    "#1b1916"
+  );
 
   await page.locator("#new-chat-button").click();
   await page.getByText("和论文聊一聊").waitFor();

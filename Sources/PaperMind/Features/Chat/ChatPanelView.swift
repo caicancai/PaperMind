@@ -119,8 +119,12 @@ struct ChatPanelView: View {
             .padding(.horizontal, 11)
             .padding(.vertical, 9)
             .background(
-                Color.primary.opacity(colorScheme == .dark ? 0.06 : 0.035),
+                PaperTheme.sheet(for: colorScheme),
                 in: RoundedRectangle(cornerRadius: 9, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .stroke(PaperTheme.rule(for: colorScheme).opacity(0.45), lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
@@ -138,7 +142,7 @@ struct ChatPanelView: View {
                     .padding(.horizontal, 11)
                     .padding(.vertical, 8)
                     .background(
-                        Color.accentColor.opacity(colorScheme == .dark ? 0.22 : 0.11),
+                        PaperTheme.selection(for: colorScheme),
                         in: RoundedRectangle(cornerRadius: 12, style: .continuous)
                     )
                     .frame(maxWidth: 285, alignment: .trailing)
@@ -431,7 +435,7 @@ struct ChatPanelView: View {
     }
 
     private var inputFill: Color {
-        colorScheme == .dark ? Color(nsColor: .controlBackgroundColor) : Color.white
+        PaperTheme.raisedSheet(for: colorScheme)
     }
 }
 
