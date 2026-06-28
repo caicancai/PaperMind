@@ -1,66 +1,42 @@
 # PaperMind
 
-一个基于 Swift/macOS 的论文阅读助手。当前版本聚焦三件事：
-- 读论文（PDF）
-- 划词翻译（默认 Google 翻译）
-- 侧边栏和 AI 讨论（支持选区问答与公式解释）
+PaperMind 是一个面向论文 PDF 的阅读工作台，把阅读、翻译、笔记和 AI 讨论放在选中文本旁边，减少复制粘贴和窗口切换。
 
 <p align="center">
   <a href="https://github.com/caicancai/PaperMind/releases"><img src="https://img.shields.io/badge/Release-GitHub-blue?logo=github" alt="Release" /></a>
-  <a href="https://github.com/caicancai/PaperMind/releases/latest"><img src="https://img.shields.io/badge/Downloads-Latest%20Assets-2ea44f?logo=github" alt="Downloads" /></a>
   <a href="https://github.com/caicancai/PaperMind/issues"><img src="https://img.shields.io/badge/Feedback-Issues-orange?logo=github" alt="Issues" /></a>
   <img src="https://img.shields.io/badge/platform-macOS%2013%2B-blue" alt="Platform" />
   <img src="https://img.shields.io/badge/swift-5.10%2B-orange" alt="Swift" />
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License" /></a>
 </p>
 
-## 快速入口
+## 能做什么
 
-| Release | Downloads | 反馈 |
+PaperMind 现在有两个入口：
+
+| 入口 | 适合场景 | 状态 |
 |---|---|---|
-| [GitHub Releases](https://github.com/caicancai/PaperMind/releases) | [最新版本资源](https://github.com/caicancai/PaperMind/releases/latest) | [提交 Issue](https://github.com/caicancai/PaperMind/issues) |
+| macOS App | 本地论文库、锚点笔记、翻译、长期阅读工作区 | 主应用 |
+| Chrome 扩展 | 在浏览器当前 PDF 标签页里快速阅读、翻译和 AI 讨论 | 浏览器伴侣 |
 
-## 当前功能
+核心工作流：
 
-- 论文库
-  - 导入本地 PDF
-  - 列表切换与删除
-  - 可关闭当前论文（不删除文件）
-- 阅读体验
-  - 中间主阅读区优先布局
-  - 选中文本后显示悬浮卡片
-- 论文笔记
-  - 选区一键保存为带页码和原文锚点的笔记
-  - 支持笔记、疑问、结论、方法、实验、待读六种分类
-  - PDF 高亮与笔记双向跳转，点击笔记可定位到原文
-  - 支持搜索、编辑和删除本地笔记
-  - AI 回答可保存为笔记，并继承提问选区的页码与锚点
-- 翻译
-  - 选区自动翻译
-  - 默认使用 Google 翻译
-  - 悬浮卡片内可快速切换目标语言（`zh/en/ja/ko`）
-  - 尽量保留 PDF 选区里的段落结构再翻译
-  - 长翻译支持展开/收起，段落展示更清晰
-  - 翻译悬浮卡片会约束在阅读区内，避免压到右侧 AI 栏
-- AI 对话
-  - 右侧 AI 讨论栏
-  - 可基于当前选区 `Explain`
-  - 不选区也可自由提问
-  - 支持“解释公式”快捷入口（检测到公式时显示）
-  - 支持 `OpenAI`、`DeepSeek`、`Kimi` 三家厂商
-  - 首次回答前会先本地预读论文并缓存上下文
-  - AI 回答支持流式输出
-  - 流式结束后按 Markdown 渲染显示
-  - 输入框内可直接切换模型与 Fast / Deep
-  - 支持停止生成、重新生成、复制回答和新建对话
-  - 空会话提供论文总结、方法与实验审查快捷问题
+- 阅读 PDF，支持目录和阅读优先布局。
+- 选中文本后翻译、解释、加入对话或保存为笔记。
+- 用 OpenAI、DeepSeek、Kimi 和当前论文对话。
+- 对公式类选区使用专门的解释入口。
+- macOS App 支持把笔记锚定到 PDF 选区。
 
-## 环境要求
+## 演示
 
-- macOS 13+
-- Swift 5.10+
+演示视频：[`docs/demo.mp4`](docs/demo.mp4)
+媒体制作流程：[`docs/README-media.md`](docs/README-media.md)
 
-## 快速开始
+## 安装
+
+打包版本见 [GitHub Releases](https://github.com/caicancai/PaperMind/releases)。
+
+本地开发：
 
 ```bash
 git clone https://github.com/caicancai/PaperMind.git
@@ -69,11 +45,14 @@ swift build
 open .build/debug/PaperMind
 ```
 
-## Chrome 扩展 MVP
+环境要求：
 
-仓库同时包含独立的 Chrome 扩展版本。在浏览器当前标签页打开 PDF 后，点击扩展即可
-直接在同一标签页进入 PaperMind，无需导入，也不会打开新窗口。支持长 PDF 懒加载、
-目录与章节推断、划词翻译、公式解释和完整 AI 对话控制：
+- macOS 13+
+- Swift 5.10+
+
+## Chrome 扩展
+
+扩展会接管当前 PDF 标签页并复用该标签页。支持 PDF.js 懒加载、内置/推断目录、划词翻译、跨页选区、公式解释和流式 AI 对话控制。
 
 ```bash
 cd extension
@@ -81,93 +60,56 @@ npm install
 npm run build
 ```
 
-然后在 `chrome://extensions` 中开启开发者模式，加载 `extension/dist`。详细说明见
-[`extension/README.md`](extension/README.md)。
+然后打开 `chrome://extensions`，开启开发者模式，加载 `extension/dist`。
 
-浏览器版按设计不提供笔记，也不持久化聊天记录。
+浏览器版说明：
 
-## 打包 DMG
+- 本地 `file://` PDF 需要在扩展详情页开启“允许访问文件网址”。
+- 浏览器版暂不包含笔记，也不持久化聊天历史。
+- 扩展测试使用生成 PDF 和 mock 的 AI/翻译流：
+
+```bash
+cd extension
+npm test
+```
+
+## AI Provider
+
+在应用设置里配置 Provider、模型和 API Key。当前支持：
+
+- OpenAI
+- DeepSeek
+- Kimi
+
+API Key 保存在本地应用配置中。Provider 或 Key 缺失时会直接提示配置错误，不会静默回退 mock。
+
+## 打包
+
+生成本地 DMG：
 
 ```bash
 ./scripts/package-dmg.sh
 ```
 
-产物路径：
-
-```text
-release/PaperMind-<version>.dmg
-```
-
-可选参数：
-
-- `--version <vX.Y.Z>` 指定版本号
-- `--debug` 使用 debug 构建打包
-- `--skip-build` 不重新构建，直接使用已有二进制打包
-
-## 正式发布 DMG（签名 + 公证）
-
-前置条件：
-- Keychain 中存在 `Developer ID Application` 证书
-- 配置好 notarytool 凭据（推荐）：
+生成签名和公证的发布 DMG：
 
 ```bash
-xcrun notarytool store-credentials "PaperMindNotary" \
-  --apple-id "<apple-id>" \
-  --team-id "<team-id>" \
-  --password "<app-specific-password>"
-```
-
-一键构建、签名、公证并加盖：
-
-```bash
-./scripts/release-dmg.sh v0.0.4 \
+./scripts/release-dmg.sh v0.2.2 \
   --identity "Developer ID Application: Your Name (TEAMID)" \
   --notary-profile "PaperMindNotary"
 ```
 
-若跳过签名/公证，macOS 可能提示“已损坏”或阻止打开。
+如果跳过签名或公证，macOS 可能会阻止打开应用。
 
-## 演示
+## Roadmap
 
-![PaperMind Demo](docs/demo.gif)
+- 改进 PDF 上下文抽取，提高整篇论文问答质量。
+- 如果扩展从伴侣模式继续扩展，考虑持久化浏览器对话历史。
 
-高清视频：[`docs/demo.mp4`](docs/demo.mp4)
-媒体制作流程：[`docs/README-media.md`](docs/README-media.md)
+## 反馈
 
-## 配置 AI Provider
-
-现在可直接在应用内 `AI 设置` 中切换 Provider / Model，API Key 会存到本地应用配置。
-可通过侧栏齿轮按钮或 `Cmd + ,` 打开设置。
-当前只使用应用内配置，不再依赖 `.env.local` 兜底。  
-Kimi 默认模型为 `kimi-2.5`。
-如果厂商未配置或 Key 缺失，应用会直接提示配置错误，不会静默回退 Mock。
-
-## 公式解释交互
-
-1. 在 PDF 中选中一段公式（如含 `=`, `^`, `\\`, `∑` 等）
-2. 悬浮卡片或右侧 AI 栏会出现 `解释公式`
-3. 点击后 AI 会用自然语言解释公式，重点说明直觉、关键符号和论文中的作用。
-
-## 已知限制
-
-- 当前测试目标未启用（当前仅维护 `swift build` 流程）
-- API Key 当前保存在本地配置（未使用 Keychain 加密）
-
-## 反馈与 Issue
-
-欢迎反馈问题和功能建议。如果遇到 bug 或有改进想法，请在 GitHub 提交 Issue：
-
-- https://github.com/caicancai/PaperMind/issues
+欢迎提交问题和功能建议：<https://github.com/caicancai/PaperMind/issues>
 
 ## License
 
 MIT，详见 [LICENSE](./LICENSE)。
-
-## 路线图（简版）
-
-- 更稳定的 PDF 上下文抽取（提升问答质量）
-- 对话历史跨重启持久化
-
-## 说明
-
-详细设计与迭代约束见 [Agent.md](./Agent.md)。
