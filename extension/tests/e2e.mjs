@@ -41,7 +41,9 @@ try {
 
   let aiRequestCount = 0;
   let translationRequestCount = 0;
+  const aiTranslationInputs = [];
   const translatedText = "这是自动翻译结果，输出会逐步显示并保持紧凑的行距。";
+  const longTranslatedText = `${translatedText}\n`.repeat(45);
   await context.route("https://translate.googleapis.com/**", async (route) => {
     await route.fulfill({
       status: 200,
@@ -57,8 +59,13 @@ try {
     await context.route(endpoint, async (route) => {
       const payload = route.request().postDataJSON();
       const isTranslation = payload.messages?.[0]?.content?.includes("专业的学术论文翻译");
+      if (isTranslation) {
+        aiTranslationInputs.push(String(payload.messages?.at(-1)?.content ?? ""));
+      }
+      const translationInput = String(payload.messages?.at(-1)?.content ?? "");
+      const responseText = isTranslation ? longTranslatedText : translatedText;
       const deltas = isTranslation
-        ? Array.from(translatedText).reduce((chunks, character, index) => {
+        ? Array.from(responseText).reduce((chunks, character, index) => {
             const chunkIndex = Math.floor(index / 5);
             chunks[chunkIndex] = (chunks[chunkIndex] ?? "") + character;
             return chunks;
@@ -137,6 +144,24 @@ try {
   assert.ok(firstCanvasVisible, "the first PDF page must be visible without scrolling");
   const renderedInitially = await page.locator('.pdf-page[data-render-state="rendered"]').count();
   assert.ok(renderedInitially >= 1 && renderedInitially < 8, "pages must render lazily");
+  const initialPageWidth = await page
+    .locator('.pdf-page[data-page-index="0"]')
+    .evaluate((element) => element.getBoundingClientRect().width);
+  await page.locator("#zoom-in").click();
+  await page.waitForFunction(
+    (width) =>
+      (document.querySelector('.pdf-page[data-page-index="0"]')?.getBoundingClientRect().width ??
+        0) > width,
+    initialPageWidth
+  );
+  assert.equal(await page.locator("#zoom-value").textContent(), "140%");
+  assert.equal(
+    await page
+      .locator('.pdf-page[data-page-index="0"]')
+      .evaluate((element) => getComputedStyle(element).getPropertyValue("--total-scale-factor").trim()),
+    "1.4",
+    "PDF text layer scale must match the rendered page scale"
+  );
 
   await page.locator(".outline-item").first().waitFor();
   assert.equal(await page.locator("#outline-source").textContent(), "内置目录");
@@ -165,6 +190,34 @@ try {
   await page.locator("#new-chat-button").click();
 
   await page.locator(".pdf-page").first().scrollIntoViewIfNeeded();
+  await page.locator('.pdf-page[data-page-index="1"]').scrollIntoViewIfNeeded();
+  await page.locator('.pdf-page[data-page-index="1"] .textLayer span').first().waitFor();
+  const crossPageSelectionText = await page.evaluate(async () => {
+    const firstSpan = [...document.querySelectorAll('.pdf-page[data-page-index="0"] .textLayer span')]
+      .find((element) => element.textContent?.includes("This paper studies"));
+    const secondSpan = [...document.querySelectorAll('.pdf-page[data-page-index="1"] .textLayer span')]
+      .find((element) => element.textContent?.includes("Long papers require"));
+    if (!firstSpan || !secondSpan) throw new Error("cross-page fixture spans not found");
+    const range = document.createRange();
+    range.setStart(firstSpan.firstChild ?? firstSpan, 0);
+    range.setEnd(secondSpan.firstChild ?? secondSpan, Math.min(6, secondSpan.textContent?.length ?? 0));
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    document.querySelector("#pdf-scroll")?.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    return selection?.toString() ?? "";
+  });
+  assert.ok(crossPageSelectionText.length > 20, "cross-page fixture selection must include text");
+  await page.getByText(translatedText).waitFor();
+  assert.ok(aiTranslationInputs.at(-1)?.includes("This paper studies"));
+  assert.ok(!/arxiv:/i.test(aiTranslationInputs.at(-1) ?? ""), "arXiv page metadata must not be translated");
+  assert.ok(!/18 Mar 2026 P\d/.test(aiTranslationInputs.at(-1) ?? ""), "page-date metadata must not be translated");
+  await page.evaluate(() => {
+    document.querySelector("#selection-popover-root")?.replaceChildren();
+    window.getSelection()?.removeAllRanges();
+  });
+
+  await page.locator(".pdf-page").first().scrollIntoViewIfNeeded();
   const selectionText = await page.evaluate(() => {
     globalThis.__translationMutations = 0;
     new MutationObserver((records) => {
@@ -182,6 +235,13 @@ try {
     const selection = window.getSelection();
     selection?.removeAllRanges();
     selection?.addRange(range);
+    const rect = span.getBoundingClientRect();
+    globalThis.__selectedSpanRect = {
+      left: rect.left,
+      top: rect.top,
+      right: rect.right,
+      bottom: rect.bottom
+    };
     document.querySelector("#pdf-scroll")?.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
     return span.textContent;
   });
@@ -192,10 +252,48 @@ try {
     await page.evaluate(() => globalThis.__translationMutations > 4),
     "translation must render through multiple incremental updates"
   );
+  assert.ok(
+    await page.locator(".selection-popover").evaluate((element) => {
+      const before = element.getBoundingClientRect();
+      return new Promise((resolve) => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            const after = element.getBoundingClientRect();
+            resolve(Math.abs(after.top - before.top) < 1 && Math.abs(after.left - before.left) < 1);
+          });
+        });
+      });
+    }),
+    "selection popover must stay anchored while translation content streams"
+  );
   const translationLineHeight = await page.locator(".translation-result").evaluate((element) =>
     Number.parseFloat(getComputedStyle(element).lineHeight)
   );
-  assert.ok(translationLineHeight < 21, "translation line height must remain compact");
+  assert.ok(translationLineHeight >= 20 && translationLineHeight <= 23, "translation line height must remain readable");
+  assert.ok(
+    await page.locator(".selection-popover").evaluate((element) => {
+      const popoverRect = element.getBoundingClientRect();
+      const result = element.querySelector(".translation-result");
+      return (
+        popoverRect.top >= 0 &&
+        popoverRect.bottom <= window.innerHeight &&
+        result instanceof HTMLElement &&
+        result.clientHeight < result.scrollHeight
+      );
+    }),
+    "long translation popover must stay inside the viewport and scroll internally"
+  );
+  assert.ok(
+    await page.locator(".selection-popover").evaluate((element) => {
+      const selected = globalThis.__selectedSpanRect;
+      if (!selected) return false;
+      const popover = element.getBoundingClientRect();
+      const overlapWidth = Math.max(0, Math.min(popover.right, selected.right) - Math.max(popover.left, selected.left));
+      const overlapHeight = Math.max(0, Math.min(popover.bottom, selected.bottom) - Math.max(popover.top, selected.top));
+      return overlapWidth * overlapHeight === 0;
+    }),
+    "selection popover must not cover the selected text"
+  );
 
   await page.getByRole("button", { name: "加入对话" }).click();
   await page.locator("#selection-chip").waitFor();
