@@ -24,6 +24,12 @@ export async function createPdfFixture({ withOutline = true } = {}) {
 
   const pages = sections.map(([title, heading, body], index) => {
     const page = document.addPage([612, 792]);
+    page.drawText(`arXiv:2603.09927v3 [cs.DB] 18 Mar 2026 P${index + 1}`, {
+      x: 54,
+      y: 760,
+      size: 8,
+      font: regular
+    });
     page.drawText(title, { x: 54, y: 720, size: index === 0 ? 24 : 20, font: bold });
     page.drawText(heading, { x: 54, y: 675, size: 16, font: bold, color: rgb(0.12, 0.25, 0.48) });
     page.drawText(body, { x: 54, y: 635, size: 12, font: regular, maxWidth: 500 });

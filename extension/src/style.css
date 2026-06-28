@@ -380,6 +380,8 @@ button:disabled {
 
 .pdf-page canvas {
   display: block;
+  pointer-events: none;
+  user-select: none;
 }
 
 .pdf-page .textLayer {
@@ -410,12 +412,16 @@ button:disabled {
 .selection-popover {
   position: fixed;
   z-index: 20;
-  width: min(420px, calc(100vw - 32px));
+  display: flex;
+  max-height: min(var(--selection-popover-max-height, calc(100vh - 24px)), calc(100vh - 24px));
+  flex-direction: column;
+  width: min(560px, calc(100vw - 32px));
   padding: 10px;
   border: 1px solid var(--paper-rule);
   border-radius: 11px;
   background: color-mix(in srgb, var(--paper-raised) 97%, transparent);
   box-shadow: 0 12px 36px var(--shadow);
+  contain: layout paint;
 }
 
 .selection-actions {
@@ -433,13 +439,15 @@ button:disabled {
 }
 
 .translation-result {
-  max-height: 210px;
+  max-height: var(--translation-result-max-height, min(60vh, 420px));
   overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   margin-top: 7px;
   padding-top: 7px;
   border-top: 1px solid var(--paper-rule-soft);
-  font-size: 13px;
-  line-height: 1.48;
+  font-size: 14px;
+  line-height: 1.55;
   white-space: pre-wrap;
 }
 

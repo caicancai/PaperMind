@@ -157,15 +157,24 @@ let chatAbortController: AbortController | undefined;
 let pageObserver: IntersectionObserver | undefined;
 let currentPageIndex = 0;
 let settings = await loadSettings();
+let activeSelectionPopover:
+  | { popover: HTMLElement; anchor: DOMRect; placement: PopoverPlacement }
+  | undefined;
+let pendingPopoverPositionFrame = 0;
+const MIN_SCALE = 0.6;
+const MAX_SCALE = 3;
+const SCALE_STEP = 0.1;
+type PopoverPlacement = "right" | "left" | "below" | "above";
 
 applyTheme(settings.theme);
 elements.chatProvider.value = settings.provider;
+updateZoomControls();
 
 elements.originalPdfButton.addEventListener("click", () => {
   if (sourcePdfUrl) location.href = sourcePdfUrl;
 });
-elements.zoomOut.addEventListener("click", () => void changeZoom(-0.1));
-elements.zoomIn.addEventListener("click", () => void changeZoom(0.1));
+elements.zoomOut.addEventListener("click", () => void changeZoom(-SCALE_STEP));
+elements.zoomIn.addEventListener("click", () => void changeZoom(SCALE_STEP));
 elements.settingsButton.addEventListener("click", showSettings);
 elements.clearSelection.addEventListener("click", clearPinnedSelection);
 elements.sendButton.addEventListener("click", () => void sendMessage());
@@ -177,9 +186,18 @@ elements.chatInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) void sendMessage();
 });
 elements.pdfScroll.addEventListener("mouseup", handleReaderSelection);
-elements.pdfScroll.addEventListener("scroll", updateCurrentPage, { passive: true });
+elements.pdfScroll.addEventListener(
+  "scroll",
+  () => {
+    updateCurrentPage();
+  },
+  { passive: true }
+);
+elements.pdfScroll.addEventListener("wheel", handleReaderWheel, { passive: false });
+window.addEventListener("resize", hideSelectionPopover);
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") hideSelectionPopover();
+  else handleZoomShortcut(event);
 });
 document.addEventListener("mousedown", (event) => {
   const target = event.target as Node;
@@ -255,8 +273,8 @@ async function fitDocumentToReader(documentProxy: PDFDocumentProxy): Promise<voi
   const firstPage = await documentProxy.getPage(1);
   const baseViewport = firstPage.getViewport({ scale: 1 });
   const availableWidth = Math.max(320, elements.pdfScroll.clientWidth - 56);
-  scale = Math.min(1.35, Math.max(0.6, availableWidth / baseViewport.width));
-  elements.zoomValue.textContent = `${Math.round(scale * 100)}%`;
+  scale = Math.min(1.35, clampScale(availableWidth / baseViewport.width));
+  updateZoomControls();
 }
 
 function paperTitleFromUrl(source: string): string {
@@ -295,6 +313,7 @@ async function prepareDocument(documentProxy: PDFDocumentProxy, generation: numb
     container.dataset.renderState = "pending";
     container.style.width = `${viewport.width}px`;
     container.style.height = `${viewport.height}px`;
+    applyPdfPageScale(container);
     const label = document.createElement("span");
     label.className = "page-number";
     label.textContent = `P${pageIndex + 1}`;
@@ -329,6 +348,7 @@ async function renderPage(pageIndex: number, generation: number): Promise<void> 
 
     const textContainer = document.createElement("div");
     textContainer.className = "textLayer";
+    applyPdfPageScale(textContainer);
     const pageLabel = container.querySelector(".page-number") ?? document.createElement("span");
     container.prepend(canvas, textContainer);
     container.append(pageLabel);
@@ -352,6 +372,13 @@ async function renderPage(pageIndex: number, generation: number): Promise<void> 
     container.dataset.renderState = "pending";
     setDocumentStatus(`第 ${pageIndex + 1} 页渲染失败：${errorMessage(error)}`, true);
   }
+}
+
+function applyPdfPageScale(element: HTMLElement): void {
+  const scaleValue = String(scale);
+  element.style.setProperty("--scale-factor", scaleValue);
+  element.style.setProperty("--user-unit", "1");
+  element.style.setProperty("--total-scale-factor", scaleValue);
 }
 
 async function extractPaperContextAndOutline(
@@ -542,8 +569,10 @@ function updatePageStatus(): void {
 
 async function changeZoom(delta: number): Promise<void> {
   if (!activeDocument) return;
-  scale = Math.min(2.2, Math.max(0.6, Math.round((scale + delta) * 10) / 10));
-  elements.zoomValue.textContent = `${Math.round(scale * 100)}%`;
+  const nextScale = clampScale(scale + delta);
+  if (nextScale === scale) return;
+  scale = nextScale;
+  updateZoomControls();
   const generation = ++renderGeneration;
   setDocumentStatus("正在重新布局…");
   try {
@@ -555,28 +584,130 @@ async function changeZoom(delta: number): Promise<void> {
   }
 }
 
+function clampScale(value: number): number {
+  return Math.min(MAX_SCALE, Math.max(MIN_SCALE, Math.round(value * 10) / 10));
+}
+
+function updateZoomControls(): void {
+  elements.zoomValue.textContent = `${Math.round(scale * 100)}%`;
+  elements.zoomOut.disabled = !activeDocument || scale <= MIN_SCALE;
+  elements.zoomIn.disabled = !activeDocument || scale >= MAX_SCALE;
+}
+
+function handleReaderWheel(event: WheelEvent): void {
+  if (!activeDocument) return;
+  if (!event.ctrlKey && !event.metaKey) {
+    hideSelectionPopover();
+    return;
+  }
+  event.preventDefault();
+  void changeZoom(event.deltaY < 0 ? SCALE_STEP : -SCALE_STEP);
+}
+
+function handleZoomShortcut(event: KeyboardEvent): void {
+  if (!activeDocument || (!event.ctrlKey && !event.metaKey)) return;
+  if (event.key === "+" || event.key === "=") {
+    event.preventDefault();
+    void changeZoom(SCALE_STEP);
+  } else if (event.key === "-" || event.key === "_") {
+    event.preventDefault();
+    void changeZoom(-SCALE_STEP);
+  } else if (event.key === "0") {
+    event.preventDefault();
+    void setZoom(1);
+  }
+}
+
+async function setZoom(nextScale: number): Promise<void> {
+  if (!activeDocument) return;
+  const delta = clampScale(nextScale) - scale;
+  if (delta === 0) return;
+  await changeZoom(delta);
+}
+
 function handleReaderSelection(): void {
   window.setTimeout(() => {
     const selection = window.getSelection();
-    const text = normalizeSelectedText(selection?.toString() ?? "");
-    if (!selection || selection.rangeCount === 0 || !text) {
+    if (!selection || selection.rangeCount === 0) {
       hideSelectionPopover();
       return;
     }
 
     const range = selection.getRangeAt(0);
-    const node = range.commonAncestorContainer;
-    const element = node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement;
-    const page = element?.closest<HTMLElement>(".pdf-page");
-    if (!page) return;
+    const pages = selectedPages(range);
+    if (pages.length === 0) return;
+    const text = normalizeSelectedText(extractSelectionText(selection, range, pages));
+    if (!text) {
+      hideSelectionPopover();
+      return;
+    }
 
     currentSelection = {
       text,
-      pageIndex: Number(page.dataset.pageIndex ?? 0),
-      rect: range.getBoundingClientRect()
+      pageIndex: Number(pages[0].dataset.pageIndex ?? 0),
+      rect: selectionAnchorRect(range)
     };
     showSelectionPopover(currentSelection);
   }, 0);
+}
+
+function selectedPages(range: Range): HTMLElement[] {
+  return [...elements.pdfPages.querySelectorAll<HTMLElement>(".pdf-page")].filter((page) => {
+    try {
+      return range.intersectsNode(page);
+    } catch {
+      return false;
+    }
+  });
+}
+
+function selectionAnchorRect(range: Range): DOMRect {
+  const rects = [...range.getClientRects()].filter((rect) => rect.width > 0 && rect.height > 0);
+  return rects.at(-1) ?? range.getBoundingClientRect();
+}
+
+function extractSelectionText(selection: Selection, range: Range, pages: HTMLElement[]): string {
+  const selectedByLayer = pages
+    .flatMap((page) => selectedTextLayerSpans(page, range, pages.length > 1))
+    .map((span) => span.textContent?.trim() ?? "")
+    .filter(Boolean)
+    .join("\n");
+
+  return selectedByLayer || selection.toString();
+}
+
+function selectedTextLayerSpans(
+  page: HTMLElement,
+  range: Range,
+  skipRunningPageChrome: boolean
+): HTMLSpanElement[] {
+  const pageRect = page.getBoundingClientRect();
+  const topChromeLimit = pageRect.top + pageRect.height * 0.1;
+  const bottomChromeLimit = pageRect.bottom - pageRect.height * 0.06;
+  const leftChromeLimit = pageRect.left + pageRect.width * 0.06;
+  const rightChromeLimit = pageRect.right - pageRect.width * 0.04;
+
+  return [...page.querySelectorAll<HTMLSpanElement>(".textLayer span")].filter((span) => {
+    try {
+      if (!range.intersectsNode(span)) return false;
+    } catch {
+      return false;
+    }
+    if (!skipRunningPageChrome) return true;
+
+    const rect = span.getBoundingClientRect();
+    const verticalCenter = rect.top + rect.height / 2;
+    const horizontalCenter = rect.left + rect.width / 2;
+    const looksLikeRotatedPageChrome =
+      rect.height > pageRect.height * 0.2 && rect.width < pageRect.width * 0.08;
+    return (
+      verticalCenter >= topChromeLimit &&
+      verticalCenter <= bottomChromeLimit &&
+      horizontalCenter >= leftChromeLimit &&
+      horizontalCenter <= rightChromeLimit &&
+      !looksLikeRotatedPageChrome
+    );
+  });
 }
 
 function normalizeSelectedText(text: string): string {
@@ -644,7 +775,7 @@ function showSelectionPopover(selection: SelectionState): void {
               if (request !== translationRequest) return;
               result.textContent += delta;
               result.scrollTop = result.scrollHeight;
-              positionPopover(popover, selection.rect);
+              scheduleActivePopoverPosition();
             }
           });
           result.classList.remove("streaming");
@@ -667,7 +798,7 @@ function showSelectionPopover(selection: SelectionState): void {
         result.textContent = errorMessage(error);
       }
     }
-    positionPopover(popover, selection.rect);
+    scheduleActivePopoverPosition();
   };
   target.addEventListener("change", () => void runTranslation());
   popover.querySelector('[data-action="chat"]')?.addEventListener("click", () => {
@@ -685,7 +816,13 @@ function showSelectionPopover(selection: SelectionState): void {
   });
 
   elements.selectionPopoverRoot.replaceChildren(popover);
-  positionPopover(popover, selection.rect);
+  const anchor = selection.rect;
+  activeSelectionPopover = {
+    popover,
+    anchor,
+    placement: choosePopoverPlacement(popover, anchor)
+  };
+  positionPopover(popover, anchor, activeSelectionPopover.placement);
   void runTranslation();
 }
 
@@ -714,25 +851,110 @@ async function streamTranslationResult(
   }
 }
 
-function positionPopover(popover: HTMLElement, anchor: DOMRect): void {
+function choosePopoverPlacement(popover: HTMLElement, anchor: DOMRect): PopoverPlacement {
   const margin = 12;
+  const gap = 10;
   const width = popover.offsetWidth || 420;
-  const height = popover.offsetHeight || 130;
-  const left = Math.min(
-    window.innerWidth - width - margin,
-    Math.max(margin, anchor.left + anchor.width / 2 - width / 2)
-  );
-  const preferredTop = anchor.bottom + 10;
-  const rawTop =
-    preferredTop + height < window.innerHeight - margin
-      ? preferredTop
-      : Math.max(margin, anchor.top - height - 10);
-  const top = Math.min(window.innerHeight - height - margin, Math.max(margin, rawTop));
+  const height = Math.min(popover.offsetHeight || 130, window.innerHeight - margin * 2);
+  const placements: PopoverPlacement[] = ["right", "left", "below", "above"];
+
+  return placements
+    .map((placement) => {
+      const ideal = candidatePopoverPosition(anchor, placement, width, height, gap);
+      const rect = new DOMRect(
+        Math.min(window.innerWidth - width - margin, Math.max(margin, ideal.left)),
+        Math.min(window.innerHeight - height - margin, Math.max(margin, ideal.top)),
+        width,
+        height
+      );
+      return {
+        placement,
+        overlap: rectOverlapArea(rect, anchor),
+        distance:
+          Math.abs(rect.left + rect.width / 2 - (anchor.left + anchor.width / 2)) +
+          Math.abs(rect.top + rect.height / 2 - (anchor.top + anchor.height / 2))
+      };
+    })
+    .sort((a, b) => a.overlap - b.overlap || a.distance - b.distance)[0].placement;
+}
+
+function scheduleActivePopoverPosition(): void {
+  if (!activeSelectionPopover || pendingPopoverPositionFrame) return;
+  pendingPopoverPositionFrame = requestAnimationFrame(() => {
+    pendingPopoverPositionFrame = 0;
+    if (!activeSelectionPopover) return;
+    activeSelectionPopover.placement = choosePopoverPlacement(
+      activeSelectionPopover.popover,
+      activeSelectionPopover.anchor
+    );
+    positionPopover(
+      activeSelectionPopover.popover,
+      activeSelectionPopover.anchor,
+      activeSelectionPopover.placement
+    );
+  });
+}
+
+function positionPopover(popover: HTMLElement, anchor: DOMRect, placement: PopoverPlacement): void {
+  const margin = 12;
+  const gap = 10;
+  const width = popover.offsetWidth || 420;
+  const availableAbove = anchor.top - gap - margin;
+  const availableBelow = window.innerHeight - anchor.bottom - gap - margin;
+  const fullViewportHeight = window.innerHeight - margin * 2;
+  const availableHeight =
+    placement === "below"
+      ? Math.max(96, availableBelow)
+      : placement === "above"
+        ? Math.max(96, availableAbove)
+        : Math.max(160, fullViewportHeight);
+  popover.style.setProperty("--selection-popover-max-height", `${availableHeight}px`);
+  const actionsHeight =
+    popover.querySelector<HTMLElement>(".selection-actions")?.offsetHeight ?? 38;
+  const resultMaxHeight = Math.max(72, availableHeight - actionsHeight - 30);
+  popover.style.setProperty("--translation-result-max-height", `${resultMaxHeight}px`);
+  const height = Math.min(popover.offsetHeight || 130, availableHeight);
+  const idealPosition = candidatePopoverPosition(anchor, placement, width, height, gap);
+  const left = Math.min(window.innerWidth - width - margin, Math.max(margin, idealPosition.left));
+  const top = Math.min(window.innerHeight - height - margin, Math.max(margin, idealPosition.top));
   popover.style.left = `${left}px`;
   popover.style.top = `${top}px`;
 }
 
+function candidatePopoverPosition(
+  anchor: DOMRect,
+  placement: PopoverPlacement,
+  width: number,
+  height: number,
+  gap: number
+): { left: number; top: number } {
+  switch (placement) {
+    case "right":
+      return { left: anchor.right + gap, top: anchor.top + anchor.height / 2 - height / 2 };
+    case "left":
+      return { left: anchor.left - width - gap, top: anchor.top + anchor.height / 2 - height / 2 };
+    case "above":
+      return { left: anchor.left + anchor.width / 2 - width / 2, top: anchor.top - height - gap };
+    case "below":
+      return { left: anchor.left + anchor.width / 2 - width / 2, top: anchor.bottom + gap };
+  }
+}
+
+function rectOverlapArea(a: DOMRect, b: DOMRect): number {
+  const left = Math.max(a.left, b.left);
+  const right = Math.min(a.right, b.right);
+  const top = Math.max(a.top, b.top);
+  const bottom = Math.min(a.bottom, b.bottom);
+  if (right <= left || bottom <= top) return 0;
+  return (right - left) * (bottom - top);
+}
+
 function hideSelectionPopover(): void {
+  activeSelectionPopover = undefined;
+  if (pendingPopoverPositionFrame) {
+    cancelAnimationFrame(pendingPopoverPositionFrame);
+    pendingPopoverPositionFrame = 0;
+  }
   elements.selectionPopoverRoot.replaceChildren();
 }
 
