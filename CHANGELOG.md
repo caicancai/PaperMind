@@ -4,6 +4,24 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [v0.2.2] - 2026-06-28
+
+### Changed
+- Improved Chrome extension selection translation UX with a wider, more readable floating
+  translation popover that stays within the viewport, scrolls long translations internally, and
+  avoids covering the selected text when possible.
+- Rebuilt Chrome extension selected-text extraction from PDF.js text-layer spans so cross-page
+  selections preserve readable text while avoiding page chrome such as headers, footers, and
+  rotated side metadata.
+
+### Fixed
+- Fixed Chrome extension PDF zoom controls, keyboard shortcuts, and Ctrl/Cmd-wheel zoom behavior.
+- Fixed PDF.js text-layer scale synchronization so text selection hit areas match rendered PDF
+  pages.
+- Fixed cross-page selections failing to trigger translation.
+
+## [v0.2.1] - 2026-06-28
+
 ### Added
 - Added a Manifest V3 Chrome extension that takes over the current PDF tab without importing or
   opening a new window, with lazy PDF.js rendering, embedded/inferred outlines, selection
