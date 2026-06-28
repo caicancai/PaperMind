@@ -161,6 +161,8 @@ let activeSelectionPopover:
   | { popover: HTMLElement; anchor: DOMRect; placement: PopoverPlacement }
   | undefined;
 let pendingPopoverPositionFrame = 0;
+let readerPointerStart: { x: number; y: number } | undefined;
+let readerSelectionGesture = false;
 const MIN_SCALE = 0.6;
 const MAX_SCALE = 3;
 const SCALE_STEP = 0.1;
@@ -185,6 +187,8 @@ elements.chatProvider.addEventListener("change", () => void updateChatProvider()
 elements.chatInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) void sendMessage();
 });
+elements.pdfScroll.addEventListener("pointerdown", handleReaderPointerDown);
+elements.pdfScroll.addEventListener("pointermove", handleReaderPointerMove);
 elements.pdfScroll.addEventListener("mouseup", handleReaderSelection);
 elements.pdfScroll.addEventListener(
   "scroll",
@@ -625,8 +629,32 @@ async function setZoom(nextScale: number): Promise<void> {
   await changeZoom(delta);
 }
 
+function handleReaderPointerDown(event: PointerEvent): void {
+  readerPointerStart = { x: event.clientX, y: event.clientY };
+  readerSelectionGesture = false;
+}
+
+function handleReaderPointerMove(event: PointerEvent): void {
+  if (!readerPointerStart) return;
+  const distance = Math.hypot(
+    event.clientX - readerPointerStart.x,
+    event.clientY - readerPointerStart.y
+  );
+  if (distance > 4) readerSelectionGesture = true;
+}
+
 function handleReaderSelection(): void {
   window.setTimeout(() => {
+    const wasSelectionGesture = readerSelectionGesture;
+    readerPointerStart = undefined;
+    readerSelectionGesture = false;
+    if (!wasSelectionGesture) {
+      window.getSelection()?.removeAllRanges();
+      currentSelection = undefined;
+      hideSelectionPopover();
+      return;
+    }
+
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0) {
       hideSelectionPopover();

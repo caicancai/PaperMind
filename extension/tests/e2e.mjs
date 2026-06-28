@@ -182,7 +182,10 @@ try {
     const selection = window.getSelection();
     selection?.removeAllRanges();
     selection?.addRange(range);
-    document.querySelector("#pdf-scroll")?.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    const reader = document.querySelector("#pdf-scroll");
+    reader?.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, clientX: 12, clientY: 12 }));
+    reader?.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, clientX: 42, clientY: 12 }));
+    reader?.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
   });
   await page.getByRole("button", { name: "解释公式" }).click();
   await page.getByText("这是测试回答。").waitFor();
@@ -204,7 +207,10 @@ try {
     const selection = window.getSelection();
     selection?.removeAllRanges();
     selection?.addRange(range);
-    document.querySelector("#pdf-scroll")?.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    const reader = document.querySelector("#pdf-scroll");
+    reader?.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, clientX: 12, clientY: 12 }));
+    reader?.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, clientX: 42, clientY: 12 }));
+    reader?.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
     return selection?.toString() ?? "";
   });
   assert.ok(crossPageSelectionText.length > 20, "cross-page fixture selection must include text");
@@ -242,7 +248,10 @@ try {
       right: rect.right,
       bottom: rect.bottom
     };
-    document.querySelector("#pdf-scroll")?.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    const reader = document.querySelector("#pdf-scroll");
+    reader?.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, clientX: 12, clientY: 12 }));
+    reader?.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, clientX: 42, clientY: 12 }));
+    reader?.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
     return span.textContent;
   });
   assert.ok(selectionText?.includes("Abstract"));
@@ -294,7 +303,29 @@ try {
     }),
     "selection popover must not cover the selected text"
   );
+  const translationRequestsBeforeClick = translationRequestCount;
+  await page.locator("#pdf-scroll").click({ position: { x: 20, y: 20 } });
+  await page.waitForFunction(() => !document.querySelector(".selection-popover"));
+  assert.equal(
+    translationRequestCount,
+    translationRequestsBeforeClick,
+    "clicking without a drag selection must not trigger translation"
+  );
 
+  await page.evaluate(() => {
+    const span = [...document.querySelectorAll('.pdf-page[data-page-index="0"] .textLayer span')]
+      .find((element) => element.textContent?.includes("Abstract"));
+    if (!span) throw new Error("fixture text span not found for chat attach");
+    const range = document.createRange();
+    range.selectNodeContents(span);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    const reader = document.querySelector("#pdf-scroll");
+    reader?.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, clientX: 12, clientY: 12 }));
+    reader?.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, clientX: 42, clientY: 12 }));
+    reader?.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+  });
   await page.getByRole("button", { name: "加入对话" }).click();
   await page.locator("#selection-chip").waitFor();
   await page.locator("#chat-input").fill("这段内容是什么意思？");

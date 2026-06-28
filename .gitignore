@@ -1,14 +1,6 @@
 .DS_Store
-/.build
-/Packages
-xcuserdata/
-DerivedData/
-.swiftpm/configuration/registries.json
-.swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
 .netrc
 .env.local
-
-/release/stage
 
 /extension/node_modules
 /extension/dist

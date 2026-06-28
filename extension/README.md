@@ -1,6 +1,6 @@
 # PaperMind Chrome Extension
 
-这是 PaperMind 的 Chrome 扩展版本，与现有 macOS/SwiftUI 应用并行维护。
+这是 PaperMind 的 Chrome 扩展版本，用于在浏览器当前 PDF 标签页中阅读、翻译并与 AI 讨论论文。
 
 ## 当前功能
 

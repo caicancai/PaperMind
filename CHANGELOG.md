@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Removed
+- Removed the legacy macOS/Swift app code, app icon assets, and DMG packaging scripts so the
+  repository now focuses on the Chrome extension.
+
 ## [v0.2.2] - 2026-06-28
 
 ### Changed
@@ -80,7 +84,6 @@ All notable changes to this project are documented in this file.
 - Refined formula explanation chat UX:
   - Use a hidden internal prompt for model quality.
   - Show a cleaner user-facing prompt in chat history.
-- Refreshed demo assets (`docs/demo.gif`, `docs/demo.mp4`).
 
 ### Fixed
 - Fixed outline extraction compatibility issue in `PDFActionGoTo.destination` handling.
