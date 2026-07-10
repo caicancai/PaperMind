@@ -46,6 +46,7 @@ Configure provider, model, and API keys in the extension settings. The supported
 - Kimi
 
 API keys are stored in local extension settings. PaperMind reports missing provider configuration directly instead of silently falling back to mock responses.
+Optional Google basic translation is disabled by default. Enabling it sends selected text to Google when no AI provider is configured or an AI translation fails.
 
 ## Development
 

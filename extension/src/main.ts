@@ -146,9 +146,9 @@ let outlineItems: OutlineItem[] = [];
 let activePaperTitle = "";
 let sourcePdfUrl = "";
 let activeDocument: PDFDocumentProxy | undefined;
-let activeDocumentUrl: string | undefined;
 let scale = 1;
 let renderGeneration = 0;
+let documentGeneration = 0;
 let paperContext = "";
 let currentSelection: SelectionState | undefined;
 let pinnedSelection: SelectionState | undefined;
@@ -158,7 +158,12 @@ let pageObserver: IntersectionObserver | undefined;
 let currentPageIndex = 0;
 let settings = await loadSettings();
 let activeSelectionPopover:
-  | { popover: HTMLElement; anchor: DOMRect; placement: PopoverPlacement }
+  | {
+      popover: HTMLElement;
+      anchor: DOMRect;
+      placement: PopoverPlacement;
+      abortTranslation: () => void;
+    }
   | undefined;
 let pendingPopoverPositionFrame = 0;
 let readerPointerStart: { x: number; y: number } | undefined;
@@ -235,6 +240,7 @@ async function loadPdfFromCurrentTab(): Promise<void> {
 
   sourcePdfUrl = source;
   activePaperTitle = paperTitleFromUrl(source);
+  const documentVersion = ++documentGeneration;
   const generation = ++renderGeneration;
   pageObserver?.disconnect();
   chatAbortController?.abort();
@@ -252,8 +258,6 @@ async function loadPdfFromCurrentTab(): Promise<void> {
   elements.pdfPages.replaceChildren();
   setDocumentStatus("正在打开…");
   await activeDocument?.destroy();
-  if (activeDocumentUrl) URL.revokeObjectURL(activeDocumentUrl);
-  activeDocumentUrl = undefined;
 
   try {
     activeDocument = await getDocument({ url: sourcePdfUrl, withCredentials: true }).promise;
@@ -261,7 +265,7 @@ async function loadPdfFromCurrentTab(): Promise<void> {
     await prepareDocument(activeDocument, generation);
     setDocumentStatus(`${activeDocument.numPages} 页`);
     updatePageStatus();
-    void extractPaperContextAndOutline(activeDocument, generation);
+    void extractPaperContextAndOutline(activeDocument, documentVersion);
   } catch (error) {
     const detail =
       sourcePdfUrl.startsWith("file:")
@@ -294,43 +298,55 @@ function paperTitleFromUrl(source: string): string {
 async function prepareDocument(documentProxy: PDFDocumentProxy, generation: number): Promise<void> {
   pageObserver?.disconnect();
   elements.pdfPages.replaceChildren();
+  const layoutScale = scale;
 
-  pageObserver = new IntersectionObserver(
+  const observer = new IntersectionObserver(
     (entries) => {
+      if (generation !== renderGeneration || observer !== pageObserver) return;
       for (const entry of entries) {
         if (entry.isIntersecting) {
           const pageIndex = Number((entry.target as HTMLElement).dataset.pageIndex);
-          void renderPage(pageIndex, generation);
+          void renderPage(documentProxy, pageIndex, generation);
+        } else {
+          evictRenderedPage(entry.target as HTMLElement);
         }
       }
     },
     { root: elements.pdfScroll, rootMargin: "1200px 0px" }
   );
+  pageObserver = observer;
 
   for (let pageIndex = 0; pageIndex < documentProxy.numPages; pageIndex += 1) {
     if (generation !== renderGeneration) return;
     const page = await documentProxy.getPage(pageIndex + 1);
-    const viewport = page.getViewport({ scale });
+    if (generation !== renderGeneration || observer !== pageObserver) return;
+    const viewport = page.getViewport({ scale: layoutScale });
     const container = document.createElement("section");
     container.className = "pdf-page pending";
     container.dataset.pageIndex = String(pageIndex);
     container.dataset.renderState = "pending";
+    container.dataset.scale = String(layoutScale);
     container.style.width = `${viewport.width}px`;
     container.style.height = `${viewport.height}px`;
-    applyPdfPageScale(container);
+    applyPdfPageScale(container, layoutScale);
     const label = document.createElement("span");
     label.className = "page-number";
     label.textContent = `P${pageIndex + 1}`;
     container.append(label);
     elements.pdfPages.append(container);
-    pageObserver.observe(container);
+    observer.observe(container);
   }
 
-  await renderPage(0, generation);
+  await renderPage(documentProxy, 0, generation);
 }
 
-async function renderPage(pageIndex: number, generation: number): Promise<void> {
-  if (!activeDocument || generation !== renderGeneration) return;
+async function renderPage(
+  documentProxy: PDFDocumentProxy,
+  pageIndex: number,
+  generation: number,
+  keepRendered = false
+): Promise<void> {
+  if (activeDocument !== documentProxy || generation !== renderGeneration) return;
   const container = elements.pdfPages.querySelector<HTMLElement>(
     `.pdf-page[data-page-index="${pageIndex}"]`
   );
@@ -338,9 +354,10 @@ async function renderPage(pageIndex: number, generation: number): Promise<void> 
   container.dataset.renderState = "rendering";
 
   try {
-    const page = await activeDocument.getPage(pageIndex + 1);
-    if (generation !== renderGeneration) return;
-    const viewport = page.getViewport({ scale });
+    const page = await documentProxy.getPage(pageIndex + 1);
+    if (activeDocument !== documentProxy || generation !== renderGeneration) return;
+    const pageScale = Number(container.dataset.scale) || scale;
+    const viewport = page.getViewport({ scale: pageScale });
     const outputScale = window.devicePixelRatio || 1;
     const canvas = document.createElement("canvas");
     canvas.width = Math.floor(viewport.width * outputScale);
@@ -352,7 +369,7 @@ async function renderPage(pageIndex: number, generation: number): Promise<void> 
 
     const textContainer = document.createElement("div");
     textContainer.className = "textLayer";
-    applyPdfPageScale(textContainer);
+    applyPdfPageScale(textContainer, pageScale);
     const pageLabel = container.querySelector(".page-number") ?? document.createElement("span");
     container.prepend(canvas, textContainer);
     container.append(pageLabel);
@@ -362,42 +379,64 @@ async function renderPage(pageIndex: number, generation: number): Promise<void> 
       viewport,
       transform: outputScale === 1 ? undefined : [outputScale, 0, 0, outputScale, 0, 0]
     }).promise;
+    if (activeDocument !== documentProxy || generation !== renderGeneration) return;
 
     const textContent = await page.getTextContent();
+    if (activeDocument !== documentProxy || generation !== renderGeneration) return;
     await new TextLayer({
       textContentSource: textContent,
       container: textContainer,
       viewport
     }).render();
+    if (activeDocument !== documentProxy || generation !== renderGeneration) return;
     container.dataset.renderState = "rendered";
     container.classList.remove("pending");
-    pageObserver?.unobserve(container);
+    if (!keepRendered && !isPageNearReader(container)) evictRenderedPage(container);
   } catch (error) {
+    if (activeDocument !== documentProxy || generation !== renderGeneration) return;
     container.dataset.renderState = "pending";
     setDocumentStatus(`第 ${pageIndex + 1} 页渲染失败：${errorMessage(error)}`, true);
   }
 }
 
-function applyPdfPageScale(element: HTMLElement): void {
-  const scaleValue = String(scale);
+function applyPdfPageScale(element: HTMLElement, pageScale: number): void {
+  const scaleValue = String(pageScale);
   element.style.setProperty("--scale-factor", scaleValue);
   element.style.setProperty("--user-unit", "1");
   element.style.setProperty("--total-scale-factor", scaleValue);
 }
 
+function isPageNearReader(container: HTMLElement): boolean {
+  const pageRect = container.getBoundingClientRect();
+  const readerRect = elements.pdfScroll.getBoundingClientRect();
+  const margin = 1200;
+  return pageRect.bottom >= readerRect.top - margin && pageRect.top <= readerRect.bottom + margin;
+}
+
+function evictRenderedPage(container: HTMLElement): void {
+  if (container.dataset.renderState !== "rendered") return;
+  container.querySelector("canvas")?.remove();
+  container.querySelector(".textLayer")?.remove();
+  container.dataset.renderState = "pending";
+  container.classList.add("pending");
+}
+
 async function extractPaperContextAndOutline(
   documentProxy: PDFDocumentProxy,
-  generation: number
+  documentVersion: number
 ): Promise<void> {
   const embedded = await buildEmbeddedOutline(documentProxy);
+  if (documentVersion !== documentGeneration || activeDocument !== documentProxy) return;
   const parts: string[] = [];
   const inferred: OutlineItem[] = [];
   let characterCount = 0;
 
   for (let pageIndex = 0; pageIndex < documentProxy.numPages; pageIndex += 1) {
-    if (generation !== renderGeneration) return;
+    if (documentVersion !== documentGeneration || activeDocument !== documentProxy) return;
     const page = await documentProxy.getPage(pageIndex + 1);
+    if (documentVersion !== documentGeneration || activeDocument !== documentProxy) return;
     const content = await page.getTextContent();
+    if (documentVersion !== documentGeneration || activeDocument !== documentProxy) return;
     const textItems = content.items.filter(
       (item): item is (typeof content.items)[number] & { str: string; height: number } =>
         "str" in item && typeof item.str === "string"
@@ -417,7 +456,7 @@ async function extractPaperContextAndOutline(
     }
   }
 
-  if (generation !== renderGeneration) return;
+  if (documentVersion !== documentGeneration || activeDocument !== documentProxy) return;
   paperContext = parts.join("\n\n").slice(0, 24_000);
   outlineItems = embedded.length > 0 ? embedded : dedupeOutline(inferred).slice(0, 100);
   renderOutline();
@@ -534,12 +573,15 @@ function renderOutline(): void {
   }
 }
 
-async function navigateToPage(pageIndex: number): Promise<void> {
+async function navigateToPage(pageIndex: number, generation = renderGeneration): Promise<void> {
+  const documentProxy = activeDocument;
+  if (!documentProxy) return;
+  await renderPage(documentProxy, pageIndex, generation, true);
+  if (activeDocument !== documentProxy || generation !== renderGeneration) return;
   const target = elements.pdfPages.querySelector<HTMLElement>(
     `.pdf-page[data-page-index="${pageIndex}"]`
   );
   if (!target) return;
-  await renderPage(pageIndex, renderGeneration);
   target.scrollIntoView({ behavior: "smooth", block: "start" });
   currentPageIndex = pageIndex;
   updatePageStatus();
@@ -572,18 +614,23 @@ function updatePageStatus(): void {
 }
 
 async function changeZoom(delta: number): Promise<void> {
-  if (!activeDocument) return;
+  const documentProxy = activeDocument;
+  if (!documentProxy) return;
   const nextScale = clampScale(scale + delta);
   if (nextScale === scale) return;
   scale = nextScale;
   updateZoomControls();
   const generation = ++renderGeneration;
+  const pageIndex = currentPageIndex;
   setDocumentStatus("正在重新布局…");
   try {
-    await prepareDocument(activeDocument, generation);
-    await navigateToPage(currentPageIndex);
-    setDocumentStatus(`${activeDocument.numPages} 页`);
+    await prepareDocument(documentProxy, generation);
+    if (activeDocument !== documentProxy || generation !== renderGeneration) return;
+    await navigateToPage(pageIndex, generation);
+    if (activeDocument !== documentProxy || generation !== renderGeneration) return;
+    setDocumentStatus(`${documentProxy.numPages} 页`);
   } catch (error) {
+    if (activeDocument !== documentProxy || generation !== renderGeneration) return;
     setDocumentStatus(errorMessage(error), true);
   }
 }
@@ -697,11 +744,23 @@ function selectionAnchorRect(range: Range): DOMRect {
 function extractSelectionText(selection: Selection, range: Range, pages: HTMLElement[]): string {
   const selectedByLayer = pages
     .flatMap((page) => selectedTextLayerSpans(page, range, pages.length > 1))
-    .map((span) => span.textContent?.trim() ?? "")
+    .map((span) => selectedTextWithinSpan(span, range).trim())
     .filter(Boolean)
     .join("\n");
 
   return selectedByLayer || selection.toString();
+}
+
+function selectedTextWithinSpan(span: HTMLSpanElement, range: Range): string {
+  const clipped = document.createRange();
+  clipped.selectNodeContents(span);
+  if (span.contains(range.startContainer)) {
+    clipped.setStart(range.startContainer, range.startOffset);
+  }
+  if (span.contains(range.endContainer)) {
+    clipped.setEnd(range.endContainer, range.endOffset);
+  }
+  return clipped.toString();
 }
 
 function selectedTextLayerSpans(
@@ -762,6 +821,7 @@ function normalizeSelectedText(text: string): string {
 }
 
 function showSelectionPopover(selection: SelectionState): void {
+  hideSelectionPopover();
   const mathSelection = isLikelyFormula(selection.text);
   const popover = document.createElement("div");
   popover.className = "selection-popover";
@@ -810,12 +870,18 @@ function showSelectionPopover(selection: SelectionState): void {
         } catch (error) {
           result.classList.remove("streaming");
           if ((error as DOMException)?.name === "AbortError") throw error;
-          result.textContent = "AI 翻译暂不可用，正在切换基础翻译…";
+          if (!settings.googleTranslateEnabled) throw error;
+          result.textContent = "AI 翻译暂不可用，正在切换 Google 翻译…";
           const translated = await translateText(selection.text, target.value);
           if (request !== translationRequest) return;
           await streamTranslationResult(result, translated, translationAnimation.signal);
         }
       } else {
+        if (!settings.googleTranslateEnabled) {
+          result.textContent = "请配置 AI Provider，或在设置中允许使用 Google 基础翻译。";
+          return;
+        }
+        result.textContent = "正在使用 Google 翻译…";
         const translated = await translateText(selection.text, target.value);
         if (request !== translationRequest) return;
         await streamTranslationResult(result, translated, translationAnimation.signal);
@@ -848,7 +914,8 @@ function showSelectionPopover(selection: SelectionState): void {
   activeSelectionPopover = {
     popover,
     anchor,
-    placement: choosePopoverPlacement(popover, anchor)
+    placement: choosePopoverPlacement(popover, anchor),
+    abortTranslation: () => translationAnimation?.abort()
   };
   positionPopover(popover, anchor, activeSelectionPopover.placement);
   void runTranslation();
@@ -978,6 +1045,7 @@ function rectOverlapArea(a: DOMRect, b: DOMRect): number {
 }
 
 function hideSelectionPopover(): void {
+  activeSelectionPopover?.abortTranslation();
   activeSelectionPopover = undefined;
   if (pendingPopoverPositionFrame) {
     cancelAnimationFrame(pendingPopoverPositionFrame);
@@ -1203,13 +1271,15 @@ function showSettings(): void {
   backdrop.innerHTML = `
     <section class="modal" role="dialog" aria-modal="true" aria-label="AI 设置">
       <h2>设置</h2>
-      <div class="subtle">API Key 仅保存在当前 Chrome 配置的扩展本地存储中，未进行额外加密。</div>
+      <div class="subtle">API Key 仅保存在当前 Chrome 配置的扩展本地存储中，未进行额外加密。Google 基础翻译会把选中文本发送给 Google，默认关闭。</div>
       <div class="settings-grid">
         <label for="theme">外观</label>
         <select id="theme">
           <option value="light">浅色</option>
           <option value="dark">深色</option>
         </select>
+        <label for="google-translate-enabled">Google 基础翻译</label>
+        <input id="google-translate-enabled" type="checkbox" />
         <label for="provider">默认 Provider</label>
         <select id="provider">
           <option value="openai">OpenAI</option>
@@ -1237,6 +1307,9 @@ function showSettings(): void {
   `;
 
   const theme = backdrop.querySelector<HTMLSelectElement>("#theme")!;
+  const googleTranslateEnabled = backdrop.querySelector<HTMLInputElement>(
+    "#google-translate-enabled"
+  )!;
   const provider = backdrop.querySelector<HTMLSelectElement>("#provider")!;
   const openaiModel = backdrop.querySelector<HTMLInputElement>("#openai-model")!;
   const openaiKey = backdrop.querySelector<HTMLInputElement>("#openai-key")!;
@@ -1245,6 +1318,7 @@ function showSettings(): void {
   const kimiModel = backdrop.querySelector<HTMLInputElement>("#kimi-model")!;
   const kimiKey = backdrop.querySelector<HTMLInputElement>("#kimi-key")!;
   theme.value = settings.theme;
+  googleTranslateEnabled.checked = settings.googleTranslateEnabled;
   provider.value = settings.provider;
   openaiModel.value = settings.openaiModel;
   openaiKey.value = settings.openaiKey;
@@ -1260,6 +1334,7 @@ function showSettings(): void {
     settings = {
       theme: theme.value as AISettings["theme"],
       provider: provider.value as AISettings["provider"],
+      googleTranslateEnabled: googleTranslateEnabled.checked,
       openaiModel: openaiModel.value.trim(),
       openaiKey: openaiKey.value.trim(),
       deepseekModel: deepseekModel.value.trim(),

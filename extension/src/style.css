@@ -706,6 +706,14 @@ button:disabled {
   color: var(--ink);
 }
 
+.settings-grid input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  justify-self: start;
+  accent-color: var(--accent);
+}
+
 .modal-actions {
   display: flex;
   justify-content: flex-end;

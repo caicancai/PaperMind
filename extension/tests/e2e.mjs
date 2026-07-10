@@ -11,6 +11,15 @@ const userDataDir = await mkdtemp(join(tmpdir(), "papermind-e2e-"));
 const fixture = await createPdfFixture();
 const inferredFixture = await createPdfFixture({ withOutline: false });
 const server = createServer((request, response) => {
+  if (request.url?.includes("plain-page")) {
+    const body = Buffer.from("<!doctype html><title>Plain page</title><p>Not a PDF</p>");
+    response.writeHead(200, {
+      "content-type": "text/html; charset=utf-8",
+      "content-length": body.length
+    });
+    response.end(body);
+    return;
+  }
   const body = request.url?.includes("inferred") ? inferredFixture : fixture;
   response.writeHead(200, {
     "content-type": "application/pdf",
@@ -23,6 +32,7 @@ const address = server.address();
 if (!address || typeof address === "string") throw new Error("test server did not start");
 const pdfUrl = `http://127.0.0.1:${address.port}/browser-test-paper.pdf`;
 const inferredPdfUrl = `http://127.0.0.1:${address.port}/inferred-outline-paper.pdf`;
+const plainPageUrl = `http://127.0.0.1:${address.port}/plain-page`;
 const context = await chromium.launchPersistentContext(userDataDir, {
   channel: "chromium",
   headless: true,
@@ -38,6 +48,17 @@ try {
   if (!worker) worker = await context.waitForEvent("serviceworker");
   const extensionId = new URL(worker.url()).host;
   assert.ok(extensionId, "extension service worker must be loaded");
+
+  const plainPage = await context.newPage();
+  await plainPage.goto(plainPageUrl);
+  await worker.evaluate(async (source) => {
+    const tabs = await chrome.tabs.query({});
+    const tab = tabs.find((candidate) => candidate.url === source);
+    if (!tab) throw new Error("plain tab not found");
+    await globalThis.__paperMindOpenTab(tab);
+  }, plainPageUrl);
+  assert.equal(plainPage.url(), plainPageUrl, "PaperMind must not replace a non-PDF tab");
+  await plainPage.close();
 
   let aiRequestCount = 0;
   let translationRequestCount = 0;
@@ -108,6 +129,7 @@ try {
       aiSettings: {
         provider: "openai",
         theme: "light",
+        googleTranslateEnabled: false,
         openaiModel: "gpt-4o-mini",
         deepseekModel: "deepseek-chat",
         kimiModel: "kimi-2.5",
@@ -147,12 +169,33 @@ try {
   const initialPageWidth = await page
     .locator('.pdf-page[data-page-index="0"]')
     .evaluate((element) => element.getBoundingClientRect().width);
-  await page.locator("#zoom-in").click();
+  await page.evaluate(() => {
+    const reader = document.querySelector("#pdf-scroll");
+    for (let index = 0; index < 7; index += 1) {
+      reader?.dispatchEvent(
+        new WheelEvent("wheel", {
+          bubbles: true,
+          cancelable: true,
+          ctrlKey: true,
+          deltaY: index % 2 === 0 ? -100 : 100
+        })
+      );
+    }
+  });
   await page.waitForFunction(
     (width) =>
       (document.querySelector('.pdf-page[data-page-index="0"]')?.getBoundingClientRect().width ??
         0) > width,
     initialPageWidth
+  );
+  await page.waitForFunction(() => document.querySelectorAll(".pdf-page").length === 8);
+  assert.equal(await page.locator(".pdf-page").count(), 8, "rapid zoom must not duplicate pages");
+  assert.equal(
+    await page.locator(".pdf-page").evaluateAll(
+      (pages) => new Set(pages.map((page) => page.getAttribute("data-page-index"))).size
+    ),
+    8,
+    "rapid zoom must retain one placeholder per page"
   );
   assert.equal(await page.locator("#zoom-value").textContent(), "140%");
   assert.equal(
@@ -192,7 +235,12 @@ try {
   assert.equal(aiRequestCount, 1, "formula explanation must issue an AI request");
   await page.locator("#new-chat-button").click();
 
+  await page.locator('.pdf-page[data-page-index="7"]').scrollIntoViewIfNeeded();
+  await page.waitForFunction(
+    () => !document.querySelector('.pdf-page[data-page-index="0"] canvas')
+  );
   await page.locator(".pdf-page").first().scrollIntoViewIfNeeded();
+  await page.locator('.pdf-page[data-page-index="0"] .textLayer span').first().waitFor();
   await page.locator('.pdf-page[data-page-index="1"]').scrollIntoViewIfNeeded();
   await page.locator('.pdf-page[data-page-index="1"] .textLayer span').first().waitFor();
   const crossPageSelectionText = await page.evaluate(async () => {
@@ -237,7 +285,8 @@ try {
       .find((element) => element.textContent?.includes("Abstract"));
     if (!span) throw new Error("fixture text span not found");
     const range = document.createRange();
-    range.selectNodeContents(span);
+    range.setStart(span.firstChild ?? span, 0);
+    range.setEnd(span.firstChild ?? span, 3);
     const selection = window.getSelection();
     selection?.removeAllRanges();
     selection?.addRange(range);
@@ -252,10 +301,15 @@ try {
     reader?.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, clientX: 12, clientY: 12 }));
     reader?.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, clientX: 42, clientY: 12 }));
     reader?.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
-    return span.textContent;
+    return selection?.toString() ?? "";
   });
-  assert.ok(selectionText?.includes("Abstract"));
+  assert.equal(selectionText, "Abs");
   await page.getByText(translatedText).waitFor();
+  assert.equal(
+    aiTranslationInputs.at(-1),
+    selectionText,
+    "translation must send only the selected substring"
+  );
   assert.ok(translationRequestCount >= 2, "configured AI provider must stream translations");
   assert.ok(
     await page.evaluate(() => globalThis.__translationMutations > 4),
@@ -341,6 +395,8 @@ try {
   assert.equal(aiRequestCount, 3, "retry must issue another AI request");
 
   await page.locator("#settings-button").click();
+  assert.equal(await page.locator("#google-translate-enabled").isChecked(), false);
+  await page.locator("#google-translate-enabled").check();
   await page.locator("#theme").selectOption("dark");
   await page.locator('[data-action="save"]').click();
   assert.equal(await page.locator("html").getAttribute("data-theme"), "dark");
@@ -349,6 +405,12 @@ try {
       getComputedStyle(document.documentElement).getPropertyValue("--paper-canvas").trim()
     ),
     "#1b1916"
+  );
+  assert.equal(
+    await page.evaluate(
+      async () => (await chrome.storage.local.get("aiSettings")).aiSettings.googleTranslateEnabled
+    ),
+    true
   );
 
   await page.locator("#new-chat-button").click();

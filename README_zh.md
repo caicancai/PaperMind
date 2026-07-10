@@ -46,6 +46,7 @@ npm run build
 - Kimi
 
 API Key 保存在本地扩展配置中。Provider 或 Key 缺失时会直接提示配置错误，不会静默回退 mock。
+Google 基础翻译默认关闭；启用后，未配置 AI Provider 或 AI 翻译失败时会把选中文本发送给 Google。
 
 ## 开发
 

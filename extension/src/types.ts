@@ -3,6 +3,7 @@ export type Provider = "openai" | "deepseek" | "kimi";
 export interface AISettings {
   provider: Provider;
   theme: "light" | "dark";
+  googleTranslateEnabled: boolean;
   openaiModel: string;
   deepseekModel: string;
   kimiModel: string;
@@ -34,6 +35,7 @@ export interface OutlineItem {
 export const DEFAULT_SETTINGS: AISettings = {
   provider: "openai",
   theme: "light",
+  googleTranslateEnabled: false,
   openaiModel: "gpt-4o-mini",
   deepseekModel: "deepseek-chat",
   kimiModel: "kimi-2.5",
